@@ -2,6 +2,7 @@ import color from "picocolors"
 import type { DoctorResult } from "./types"
 import { SYMBOLS } from "./constants"
 import { formatHeader, formatIssue } from "./format-shared"
+import { PLUGIN_NAME } from "../../shared"
 
 export function formatDefault(result: DoctorResult): string {
   const lines: string[] = []
@@ -14,9 +15,7 @@ export function formatDefault(result: DoctorResult): string {
     const opencodeVer = result.systemInfo.opencodeVersion ?? "unknown"
     const pluginVer = result.systemInfo.pluginVersion ?? "unknown"
     lines.push(
-      ` ${color.green(SYMBOLS.check)} ${color.green(
-        `System OK (opencode ${opencodeVer} · oh-my-opencode ${pluginVer})`
-      )}`
+      ` ${color.green(SYMBOLS.check)} ${color.green(`System OK (opencode ${opencodeVer} · ${PLUGIN_NAME} ${pluginVer})`)}`
     )
   } else {
     const issueCount = allIssues.filter((i) => i.severity === "error").length

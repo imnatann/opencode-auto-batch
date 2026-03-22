@@ -1,4 +1,5 @@
 import color from "picocolors"
+import { PLUGIN_NAME } from "../../shared"
 
 export const SYMBOLS = {
   check: color.green("\u2713"),
@@ -22,6 +23,7 @@ export const CHECK_IDS = {
   CONFIG: "config",
   TOOLS: "tools",
   MODELS: "models",
+  PROVIDERS: "providers",
 } as const
 
 export const CHECK_NAMES: Record<string, string> = {
@@ -29,6 +31,7 @@ export const CHECK_NAMES: Record<string, string> = {
   [CHECK_IDS.CONFIG]: "Configuration",
   [CHECK_IDS.TOOLS]: "Tools",
   [CHECK_IDS.MODELS]: "Models",
+  [CHECK_IDS.PROVIDERS]: "Providers",
 } as const
 
 export const EXIT_CODES = {
@@ -38,6 +41,6 @@ export const EXIT_CODES = {
 
 export const MIN_OPENCODE_VERSION = "1.0.150"
 
-export const PACKAGE_NAME = "oh-my-opencode"
+export const PACKAGE_NAME = PLUGIN_NAME
 
 export const OPENCODE_BINARIES = ["opencode", "opencode-desktop"] as const

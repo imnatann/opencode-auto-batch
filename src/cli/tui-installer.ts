@@ -8,6 +8,7 @@ import {
   isOpenCodeInstalled,
   writeOmoConfig,
 } from "./config-manager"
+import { getOmoConfigPath } from "./config-manager/config-context"
 import { detectedToInitialValues, formatConfigSummary, SYMBOLS } from "./install-validators"
 import { promptInstallConfig } from "./tui-install-prompts"
 
@@ -80,6 +81,8 @@ export async function runTuiInstaller(args: InstallArgs, version: string): Promi
   }
 
   p.note(formatConfigSummary(config), isUpdate ? "Updated Configuration" : "Installation Complete")
+  p.log.info(`Runtime config path: ${getOmoConfigPath()}`)
+  p.log.message(`After provider login, reopen ${color.cyan("opencode")} once so connected-provider cache and runtime checks can refresh.`)
 
   p.log.success(color.bold(isUpdate ? "Configuration updated!" : "Installation complete!"))
   p.log.message(`Run ${color.cyan("opencode")} to start!`)

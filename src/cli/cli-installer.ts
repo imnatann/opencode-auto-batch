@@ -7,6 +7,7 @@ import {
   isOpenCodeInstalled,
   writeOmoConfig,
 } from "./config-manager"
+import { getOmoConfigPath } from "./config-manager/config-context"
 import {
   SYMBOLS,
   argsToConfig,
@@ -84,6 +85,9 @@ export async function runCliInstaller(args: InstallArgs, version: string): Promi
   printSuccess(`Config written ${SYMBOLS.arrow} ${color.dim(omoResult.configPath)}`)
 
   printBox(formatConfigSummary(config), isUpdate ? "Updated Configuration" : "Installation Complete")
+
+  printInfo(`Runtime config path: ${getOmoConfigPath()}`)
+  printInfo(`After provider login, reopen ${color.cyan("opencode")} once so connected-provider cache and runtime checks can refresh.`)
 
   if (!config.hasClaude) {
     console.log()
