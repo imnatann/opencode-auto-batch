@@ -156,6 +156,30 @@ Max Concurrent: 7 (Waves 1 & 2)
 - **4**: **4** — T21 → \`deep\`, T22 → \`unspecified-high\`, T23 → \`deep\`, T24 → \`git\`
 - **FINAL**: **4** — F1 → \`oracle\`, F2 → \`unspecified-high\`, F3 → \`unspecified-high\`, F4 → \`deep\`
 
+### Ownership Plan (MANDATORY for parallel execution)
+
+> This section is REQUIRED whenever the plan contains parallel work.
+> Use explicit ownership bundle IDs so downstream orchestration can tell which tasks may write concurrently and which must be serialized.
+> Read-only work may overlap on files, but write-capable work must have disjoint ownership or separate waves.
+
+\`\`\`text
+Bundles:
+- O1 (write-capable): T1, T2 -> src/api/*, route registry
+- O2 (read-only): T3, T4 -> repo docs + tests audit
+- O3 (write-capable): T5 -> src/ui/*, generated assets
+
+Collision Boundaries:
+- src/routes/index.ts shared by O1 and O3 -> serialize final integration
+- tests/auth/* shared by T1 and T6 -> same wave forbidden
+
+Serial Waves:
+- Wave 1: O1, O2
+- Wave 2: O3
+
+Draft-Start Tasks:
+- D1: T7 can start as read-only research before O1 finishes
+\`\`\`
+
 ---
 
 ## TODOs

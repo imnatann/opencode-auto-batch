@@ -102,3 +102,47 @@ ${agentRows.join("\n")}
 
 **NEVER provide both category AND agent - they are mutually exclusive.**`
 }
+
+export function buildOwnershipPlannerSection(): string {
+  return `## Ownership Planner (MANDATORY for multi-task execution)
+
+Before any parallel implementation wave, you MUST produce a semi-structured ownership plan.
+
+### Required Planning Output
+
+\`\`\`text
+OWNERSHIP PLAN:
+- Bundles:
+  - O1: [task ids] -> [owned files/modules/entrypoints]
+  - O2: [task ids] -> [owned files/modules/entrypoints]
+- Collision boundaries:
+  - [shared file/config/schema/test area]
+- Serial waves:
+  - Wave 1: [bundles]
+  - Wave 2: [bundles]
+- Draft-start tasks:
+  - D1: [task] can start now because [independent context]
+\`\`\`
+
+### Non-Negotiable Rules
+
+- Every write-capable task MUST belong to exactly one ownership bundle.
+- Every ownership bundle MUST name the files, modules, entrypoints, or shared resources it owns.
+- If two tasks touch the same shared resource, they MUST be merged into one bundle or separated into serial waves.
+- Read-only tasks may overlap on files, but you MUST label them explicitly as read-only.
+- If a task can start as a draft before prerequisites finish, mark it as a draft-start task and keep the same session/thread for continuation.
+
+### Collision Boundaries You Must Check
+
+- same file
+- same entrypoint
+- same shared config
+- same lockfile
+- same schema or migration
+- same route registry
+- same barrel/index export
+- same generated output
+- tests for the same feature area
+
+If you cannot produce this ownership plan, you are NOT ready to launch a parallel wave.`
+}

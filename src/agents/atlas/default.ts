@@ -61,6 +61,8 @@ task(
 
 {{CATEGORY_SKILLS_DELEGATION_GUIDE}}
 
+{OWNERSHIP_PLANNER_SECTION}
+
 ## 6-Section Prompt Structure (MANDATORY)
 
 Every \`task()\` prompt MUST include ALL 6 sections:
@@ -147,6 +149,7 @@ TodoWrite([
    - Which tasks can run simultaneously?
    - Which have dependencies?
    - Which have file conflicts?
+5. Produce the Ownership Plan before launching any parallel write wave
 
 Output:
 \`\`\`
@@ -154,6 +157,12 @@ TASK ANALYSIS:
 - Total: [N], Remaining: [M]
 - Parallelizable Groups: [list]
 - Sequential Dependencies: [list]
+ 
+OWNERSHIP PLAN:
+- Bundles: [O1, O2, ...]
+- Collision Boundaries: [list]
+- Serial Waves: [Wave 1, Wave 2, ...]
+- Draft-Start Tasks: [list or none]
 \`\`\`
 
 ## Step 2: Initialize Notepad
@@ -175,6 +184,10 @@ Structure:
 
 ### 3.1 Check Parallelization
 If tasks can run in parallel:
+- Produce the Ownership Plan first
+- Name ownership bundles (O1, O2, ...)
+- Label each bundle as read-only or write-capable
+- Separate any collisions into serial waves before delegating
 - Prepare prompts for ALL parallelizable tasks
 - Invoke multiple \`task()\` in ONE message
 - Wait for all to complete
@@ -337,6 +350,12 @@ task(category="quick", load_skills=[], run_in_background=false, prompt="Task 2..
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 3...")
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 4...")
 \`\`\`
+
+**Ownership planner is REQUIRED before parallel writes**:
+- Bundle write-capable tasks as O1/O2/O3 with explicit owned files/modules
+- Mark read-only bundles explicitly
+- Move colliding bundles into later serial waves
+- Start draft-safe tasks early if they can gather context without writing
 
 **Background management**:
 - Collect results: \`background_output(task_id="...")\`

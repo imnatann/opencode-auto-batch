@@ -27,6 +27,7 @@ import {
   buildCategorySection,
   buildSkillsSection,
   buildDecisionMatrix,
+  buildOwnershipPlannerSection,
 } from "./prompt-section-builder"
 
 const MODE: AgentMode = "all"
@@ -87,6 +88,7 @@ function buildDynamicOrchestratorPrompt(ctx?: OrchestratorContext): string {
   const decisionMatrix = buildDecisionMatrix(agents, userCategories)
   const skillsSection = buildSkillsSection(skills)
   const categorySkillsGuide = buildCategorySkillsDelegationGuide(availableCategories, skills)
+  const ownershipPlannerSection = buildOwnershipPlannerSection()
 
   const basePrompt = getAtlasPrompt(model)
 
@@ -96,6 +98,7 @@ function buildDynamicOrchestratorPrompt(ctx?: OrchestratorContext): string {
     .replace("{DECISION_MATRIX}", decisionMatrix)
     .replace("{SKILLS_SECTION}", skillsSection)
     .replace("{{CATEGORY_SKILLS_DELEGATION_GUIDE}}", categorySkillsGuide)
+    .replace("{OWNERSHIP_PLANNER_SECTION}", ownershipPlannerSection)
 }
 
 export function createAtlasAgent(ctx: OrchestratorContext): AgentConfig {

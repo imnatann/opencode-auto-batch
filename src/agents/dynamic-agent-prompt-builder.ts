@@ -392,15 +392,30 @@ export function buildParallelDelegationSection(model: string, categories: Availa
 **MANDATORY — for ANY implementation task:**
 
 1. **ALWAYS decompose** the task into independent work units. No exceptions. Even if the task "feels small", decompose it.
-2. **ALWAYS delegate** EACH unit to a \`deep\` or \`unspecified-high\` agent in parallel (\`run_in_background=true\`).
-3. **NEVER work sequentially.** If 4 independent units exist, spawn 4 agents simultaneously. Not 1 at a time. Not 2 then 2.
-4. **NEVER implement directly** when delegation is possible. You write prompts, not code.
+2. **ALWAYS produce an ownership plan** before parallel writes begin. Name bundles as \`O1\`, \`O2\`, \`O3\` and explicitly state which files/modules/entrypoints each bundle owns.
+3. **ALWAYS delegate** EACH unit to a \`deep\` or \`unspecified-high\` agent in parallel (\`run_in_background=true\`) only after ownership boundaries are explicit.
+4. **NEVER work sequentially.** If 4 independent units exist, spawn 4 agents simultaneously. Not 1 at a time. Not 2 then 2.
+5. **NEVER implement directly** when delegation is possible. You write prompts, not code.
+
+**Before launching a parallel wave, explicitly check for collisions:**
+- same file
+- same entrypoint
+- same shared config
+- same lockfile
+- same schema or migration
+- same route registry
+- same barrel/index export
+- same generated output
+- tests for the same feature area
+
+If any collision exists, merge the tasks into one ownership bundle or move one bundle to a later serial wave.
 
 **YOUR PROMPT TO EACH AGENT MUST INCLUDE:**
 - GOAL with explicit success criteria (what "done" looks like)
 - File paths and constraints (where to work, what not to touch)
 - Existing patterns to follow (reference specific files the agent should read)
 - Clear scope boundary (what is IN scope, what is OUT of scope)
+- Ownership bundle label and owned resources (e.g. \`Ownership Bundle: O2 -> src/api/*, route registry\`)
 
 **Vague delegation = failed delegation.** If your prompt to the subagent is shorter than 5 lines, it is too vague.
 

@@ -78,6 +78,8 @@ task(subagent_type="[agent]", load_skills=[], run_in_background=false, prompt=".
 
 {{CATEGORY_SKILLS_DELEGATION_GUIDE}}
 
+{OWNERSHIP_PLANNER_SECTION}
+
 ## 6-Section Prompt Structure (MANDATORY)
 
 Every \`task()\` prompt MUST include ALL 6 sections:
@@ -160,6 +162,7 @@ TodoWrite([
 2. Parse actionable **top-level** task checkboxes in \`## TODOs\` and \`## Final Verification Wave\`
    - Ignore nested checkboxes under Acceptance Criteria, Evidence, Definition of Done, and Final Checklist sections.
 3. Build parallelization map
+4. Produce the Ownership Plan before launching any parallel write wave
 
 Output format:
 \`\`\`
@@ -167,6 +170,12 @@ TASK ANALYSIS:
 - Total: [N], Remaining: [M]
 - Parallel Groups: [list]
 - Sequential: [list]
+
+OWNERSHIP PLAN:
+- Bundles: [O1, O2, ...]
+- Collision Boundaries: [list]
+- Serial Waves: [Wave 1, Wave 2, ...]
+- Draft-Start Tasks: [list or none]
 \`\`\`
 
 ## Step 2: Initialize Notepad
@@ -180,7 +189,7 @@ Structure: learnings.md, decisions.md, issues.md, problems.md
 ## Step 3: Execute Tasks
 
 ### 3.1 Parallelization Check
-- Parallel tasks → invoke multiple \`task()\` in ONE message
+- Parallel tasks → produce Ownership Plan first, then invoke multiple \`task()\` in ONE message
 - Sequential → process one at a time
 
 ### 3.2 Pre-Delegation (MANDATORY)
@@ -319,6 +328,12 @@ task(category="...", load_skills=[...], run_in_background=false, ...)
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 2...")
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 3...")
 \`\`\`
+
+**Ownership planner is REQUIRED before parallel writes**:
+- Bundle write-capable tasks as O1/O2/O3 with explicit owned files/modules
+- Mark read-only bundles explicitly
+- Move colliding bundles into later serial waves
+- Start draft-safe tasks early if they can gather context without writing
 
 **Background management**:
 - Collect: \`background_output(task_id="...")\`

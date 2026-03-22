@@ -15,6 +15,7 @@ import { HOOK_NAME } from "./hook-name"
 import { DIRECT_WORK_REMINDER } from "./system-reminder-templates"
 import { isSisyphusPath } from "./sisyphus-path"
 import { extractSessionIdFromOutput, validateSubagentSessionId } from "./subagent-session-id"
+import { buildOwnershipPlanReminder, hasUsableOwnershipPlan, inspectOwnershipPlan } from "./ownership-plan"
 import {
   buildCompletionGate,
   buildFinalWaveApprovalReminder,
@@ -192,6 +193,10 @@ export function createToolExecuteAfterHandler(input: {
         const leadReminder = shouldPauseForApproval
           ? buildFinalWaveApprovalReminder(boulderState.plan_name, progress, preferredSessionId)
           : buildCompletionGate(boulderState.plan_name, preferredSessionId)
+        const ownershipStatus = inspectOwnershipPlan(boulderState.active_plan)
+        const ownershipReminder = hasUsableOwnershipPlan(ownershipStatus)
+          ? null
+          : buildOwnershipPlanReminder(boulderState.plan_name, ownershipStatus)
         const followupReminder = shouldPauseForApproval
           ? null
           : buildOrchestratorReminder(boulderState.plan_name, progress, preferredSessionId, autoCommit, false)
@@ -214,7 +219,7 @@ ${originalResponse}
 ${
   followupReminder === null
     ? ""
-    : `<system-reminder>\n${followupReminder}\n</system-reminder>`
+    : `<system-reminder>\n${followupReminder}\n</system-reminder>${ownershipReminder ? `\n\n<system-reminder>\n${ownershipReminder}\n</system-reminder>` : ""}`
 }`
         log(`[${HOOK_NAME}] Output transformed for orchestrator mode (boulder)`, {
           plan: boulderState.plan_name,

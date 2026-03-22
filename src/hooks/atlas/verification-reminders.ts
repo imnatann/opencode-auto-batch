@@ -109,6 +109,12 @@ Read(".sisyphus/plans/${planName}.md")
 Count exactly: how many \`- [ ]\` remain? How many \`- [x]\` completed?
 This is YOUR ground truth. Use it to decide what comes next.
 
+**STEP 6.5: VALIDATE OWNERSHIP PLAN BEFORE THE NEXT PARALLEL WRITE WAVE**
+
+- If the next work is parallel and write-capable, verify the plan contains an Ownership Plan section
+- Confirm bundles (\`O1\`, \`O2\`, ...), collision boundaries, serial waves, and draft-start tasks are explicit
+- If ownership is unclear, update the plan before launching the next parallel write wave
+
 ${commitStep}
 **STEP ${nextStepNumber}: PROCEED TO NEXT TASK**
 
