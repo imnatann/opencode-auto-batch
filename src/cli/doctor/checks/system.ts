@@ -82,9 +82,9 @@ export async function checkSystem(): Promise<CheckResult> {
 
   if (!pluginInfo.registered) {
     issues.push({
-      title: "oh-my-opencode is not registered",
+      title: "opencode-auto-batch is not registered",
       description: "Plugin entry is missing from OpenCode configuration.",
-      fix: "Run: bunx oh-my-opencode install",
+      fix: "Install the package and add `opencode-auto-batch` to your OpenCode plugin list.",
       severity: "error",
       affects: ["all agents"],
     })
@@ -108,7 +108,7 @@ export async function checkSystem(): Promise<CheckResult> {
     issues.push({
       title: "Loaded plugin is outdated",
       description: `Loaded ${systemInfo.loadedVersion}, latest ${latestVersion}.`,
-      fix: `Update: cd "${loadedInfo.cacheDir}" && bun add oh-my-opencode@${installTag}`,
+      fix: `Update the installed package in ${loadedInfo.cacheDir} to the latest opencode-auto-batch release (${installTag}).`,
       severity: "warning",
       affects: ["plugin features"],
     })
