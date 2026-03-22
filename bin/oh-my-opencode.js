@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// bin/oh-my-opencode.js
 // Wrapper script that detects platform and spawns the correct binary
 
 import { spawnSync } from "node:child_process";
@@ -85,7 +84,7 @@ function main() {
       preferBaseline: avx2Supported === false,
     });
   } catch (error) {
-    console.error(`\noh-my-opencode: ${error.message}\n`);
+    console.error(`\nopencode-auto-batch: ${error.message}\n`);
     process.exit(1);
   }
 
@@ -100,7 +99,7 @@ function main() {
     .filter((entry) => entry !== null);
 
   if (resolvedBinaries.length === 0) {
-    console.error(`\noh-my-opencode: Platform binary not installed.`);
+    console.error(`\nopencode-auto-batch: Platform binary not installed.`);
     console.error(`\nYour platform: ${platform}-${arch}${libcFamily === "musl" ? "-musl" : ""}`);
     console.error(`Expected packages (in order): ${packageCandidates.join(", ")}`);
     console.error(`\nTo fix, run:`);
@@ -120,7 +119,7 @@ function main() {
         continue;
       }
 
-      console.error(`\noh-my-opencode: Failed to execute binary.`);
+      console.error(`\nopencode-auto-batch: Failed to execute binary.`);
       console.error(`Error: ${result.error.message}\n`);
       process.exit(2);
     }
