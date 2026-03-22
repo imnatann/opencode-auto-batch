@@ -1,5 +1,10 @@
 # OpenCode Auto Batch
 
+[![CI](https://img.shields.io/github/actions/workflow/status/imnatann/opencode-auto-batch/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/imnatann/opencode-auto-batch/actions/workflows/ci.yml)
+[![Stars](https://img.shields.io/github/stars/imnatann/opencode-auto-batch?style=flat-square)](https://github.com/imnatann/opencode-auto-batch/stargazers)
+[![Issues](https://img.shields.io/github/issues/imnatann/opencode-auto-batch?style=flat-square)](https://github.com/imnatann/opencode-auto-batch/issues)
+[![License](https://img.shields.io/github/license/imnatann/opencode-auto-batch?style=flat-square)](https://github.com/imnatann/opencode-auto-batch/blob/main/LICENSE.md)
+
 OpenCode is good.
 
 Manually choosing agents is not.
@@ -209,8 +214,14 @@ ultrawork audit this repo, fix the highest-risk issue, run the relevant verifica
 - `docs/guide/standalone-installation.md` - install and update flow
 - `docs/guide/agents-and-routing.md` - front-door agents and route behavior
 - `docs/guide/multi-batch.md` - execution waves, ownership, and todo visibility
+- `docs/guide/publishing.md` - npm publish and release flow
 - `docs/examples/opencode.json` - OpenCode config with `auto` as default
 - `docs/examples/runtime-config.json` - runtime config copied to `~/.config/opencode/oh-my-opencode.json`
+
+## Release
+
+- latest changelog: `CHANGELOG.md`
+- publish guide: `docs/guide/publishing.md`
 
 ## Current Compatibility Note
 
