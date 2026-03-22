@@ -25,6 +25,7 @@ export { createSkillMcpTool } from "./skill-mcp"
 import {
   createBackgroundOutput,
   createBackgroundCancel,
+  createBackgroundRecover,
   type BackgroundOutputManager,
   type BackgroundCancelClient,
 } from "./background-task"
@@ -44,6 +45,7 @@ export {
   createTaskUpdateTool,
 } from "./task"
 export { createHashlineEditTool } from "./hashline-edit"
+export { createSubagentPanelTool } from "./subagent-panel"
 
 export function createBackgroundTools(manager: BackgroundManager, client: OpencodeClient): Record<string, ToolDefinition> {
   const outputManager: BackgroundOutputManager = manager
@@ -51,6 +53,7 @@ export function createBackgroundTools(manager: BackgroundManager, client: Openco
   return {
     background_output: createBackgroundOutput(outputManager, client),
     background_cancel: createBackgroundCancel(manager, cancelClient),
+    background_recover: createBackgroundRecover(manager),
   }
 }
 

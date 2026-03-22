@@ -25,6 +25,7 @@ import {
   createTaskList,
   createTaskUpdateTool,
   createHashlineEditTool,
+  createSubagentPanelTool,
 } from "../tools"
 import { getMainSessionID } from "../features/claude-code-session-state"
 import { filterDisabledTools } from "../shared/disabled-tools"
@@ -139,6 +140,7 @@ export function createToolRegistry(args: {
     call_omo_agent: callOmoAgent,
     ...(lookAt ? { look_at: lookAt } : {}),
     task: delegateTask,
+    subagent_panel: createSubagentPanelTool(managers.backgroundManager),
     skill_mcp: skillMcpTool,
     skill: skillTool,
     interactive_bash,

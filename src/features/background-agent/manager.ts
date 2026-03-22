@@ -6,6 +6,8 @@ import type {
   ResumeInput,
 } from "./types"
 import { TaskHistory } from "./task-history"
+import type { TaskHistoryEntry } from "./task-history"
+import { OwnershipManager } from "./ownership"
 import {
   log,
   getAgentToolRestrictions,
@@ -13,6 +15,7 @@ import {
   normalizeSDKResponse,
   promptWithModelSuggestionRetry,
   resolveInheritedPromptTools,
+  resolveOwnershipKeys,
   createInternalAgentTextPart,
 } from "../../shared"
 import { setSessionTools } from "../../shared/session-tools-store"
@@ -154,6 +157,7 @@ export class BackgroundManager {
   private enableParentSessionNotifications: boolean
   readonly taskHistory = new TaskHistory()
   private cachedCircuitBreakerSettings?: CircuitBreakerSettings
+  private ownershipManager: OwnershipManager
 
   constructor(
     ctx: PluginInput,
@@ -179,7 +183,44 @@ export class BackgroundManager {
     this.rootDescendantCounts = new Map()
     this.preStartDescendantReservations = new Set()
     this.enableParentSessionNotifications = options?.enableParentSessionNotifications ?? true
+    this.ownershipManager = new OwnershipManager()
     this.registerProcessCleanup()
+  }
+
+  private releaseTaskResources(task: BackgroundTask): void {
+    this.releaseTaskResources(task)
+    this.ownershipManager.release(task.id, task.ownershipKeys)
+    task.ownershipKeys = undefined
+  }
+
+  private tryAcquireOwnership(task: BackgroundTask): boolean {
+    const keys = task.ownershipKeys ?? []
+    if (keys.length === 0) return true
+    return this.ownershipManager.acquire(task.id, keys)
+  }
+
+  private hasEarlierWaveRunning(task: BackgroundTask): boolean {
+    if (!task.writeCapable || !task.serialWave || task.serialWave <= 1) return false
+    for (const other of this.tasks.values()) {
+      if (other.id === task.id) continue
+      if (other.parentSessionID !== task.parentSessionID) continue
+      if (!other.writeCapable) continue
+      if (!other.serialWave) continue
+      if (other.serialWave >= task.serialWave) continue
+      if (other.status === "running" || other.status === "pending") return true
+    }
+    return false
+  }
+
+  private buildTaskTitle(input: LaunchInput): string {
+    const tags = [
+      input.serialWave ? `W${input.serialWave}` : undefined,
+      input.ownershipBundle,
+      input.writeCapable === false ? "RO" : input.writeCapable ? "RW" : undefined,
+    ].filter(Boolean)
+
+    const prefix = tags.length > 0 ? `[${tags.join(" ")}] ` : ""
+    return `${prefix}${input.description} (@${input.agent} subagent)`
   }
 
   async assertCanSpawn(parentSessionID: string): Promise<SubagentSpawnContext> {
@@ -310,8 +351,19 @@ export class BackgroundManager {
         model: input.model,
         fallbackChain: input.fallbackChain,
         attemptCount: 0,
-        category: input.category,
-      }
+      category: input.category,
+      ownershipBundle: input.ownershipBundle,
+      ownershipResources: input.ownershipResources,
+      writeCapable: input.writeCapable,
+      serialWave: input.serialWave,
+      draftStart: input.draftStart,
+      ownershipKeys: resolveOwnershipKeys({
+        parentSessionID: input.parentSessionID,
+        ownershipBundle: input.ownershipBundle,
+        ownershipResources: input.ownershipResources,
+        writeCapable: input.writeCapable,
+      }),
+    }
 
       this.tasks.set(task.id, task)
       this.taskHistory.record(input.parentSessionID, { id: task.id, agent: input.agent, description: input.description, status: "pending", category: input.category })
@@ -379,16 +431,26 @@ export class BackgroundManager {
           continue
         }
 
+        if (this.hasEarlierWaveRunning(item.task) || !this.tryAcquireOwnership(item.task)) {
+          this.concurrencyManager.release(key)
+          queue.push(item)
+          setTimeout(() => {
+            void this.processKey(key)
+          }, 250)
+          return
+        }
+
         try {
           await this.startTask(item)
         } catch (error) {
           log("[background-agent] Error starting task:", error)
           this.rollbackPreStartDescendantReservation(item.task)
           if (item.task.concurrencyKey) {
-            this.concurrencyManager.release(item.task.concurrencyKey)
-            item.task.concurrencyKey = undefined
+            this.releaseTaskResources(item.task)
           } else {
             this.concurrencyManager.release(key)
+            this.ownershipManager.release(item.task.id, item.task.ownershipKeys)
+            item.task.ownershipKeys = undefined
           }
         }
       }
@@ -420,7 +482,7 @@ export class BackgroundManager {
     const createResult = await this.client.session.create({
       body: {
         parentID: input.parentSessionID,
-        title: `${input.description} (@${input.agent} subagent)`,
+        title: this.buildTaskTitle(input),
         ...(input.sessionPermission ? { permission: input.sessionPermission } : {}),
       } as Record<string, unknown>,
       query: {
@@ -445,6 +507,8 @@ export class BackgroundManager {
         log("[background-agent] Failed to abort cancelled pre-start session:", error)
       })
       this.concurrencyManager.release(concurrencyKey)
+      this.ownershipManager.release(task.id, task.ownershipKeys)
+      task.ownershipKeys = undefined
       return
     }
 
@@ -543,10 +607,7 @@ export class BackgroundManager {
           existingTask.error = errorMessage
         }
         existingTask.completedAt = new Date()
-        if (existingTask.concurrencyKey) {
-          this.concurrencyManager.release(existingTask.concurrencyKey)
-          existingTask.concurrencyKey = undefined
-        }
+        this.releaseTaskResources(existingTask)
 
         removeTaskToastTracking(existingTask.id)
 
@@ -565,6 +626,38 @@ export class BackgroundManager {
 
   getTask(id: string): BackgroundTask | undefined {
     return this.tasks.get(id)
+  }
+
+  listTasks(): BackgroundTask[] {
+    return Array.from(this.tasks.values())
+      .map((task) => ({
+        ...task,
+        ...(task.queuedAt ? { queuedAt: new Date(task.queuedAt) } : {}),
+        ...(task.startedAt ? { startedAt: new Date(task.startedAt) } : {}),
+        ...(task.completedAt ? { completedAt: new Date(task.completedAt) } : {}),
+        ...(task.progress
+          ? {
+              progress: {
+                ...task.progress,
+                lastUpdate: new Date(task.progress.lastUpdate),
+                ...(task.progress.lastMessageAt ? { lastMessageAt: new Date(task.progress.lastMessageAt) } : {}),
+              },
+            }
+          : {}),
+      }))
+      .sort((a, b) => {
+        const aTime = a.startedAt?.getTime() ?? a.queuedAt?.getTime() ?? 0
+        const bTime = b.startedAt?.getTime() ?? b.queuedAt?.getTime() ?? 0
+        return bTime - aTime
+      })
+  }
+
+  getTaskHistoryByParentSession(sessionID: string): TaskHistoryEntry[] {
+    return this.taskHistory.getByParentSession(sessionID)
+  }
+
+  listAllTaskHistory(): Array<{ parentSessionID: string; entry: TaskHistoryEntry }> {
+    return this.taskHistory.listAll()
   }
 
   getTasksByParentSession(sessionID: string): BackgroundTask[] {
@@ -815,10 +908,7 @@ export class BackgroundManager {
       existingTask.completedAt = new Date()
 
       // Release concurrency on error to prevent slot leaks
-      if (existingTask.concurrencyKey) {
-        this.concurrencyManager.release(existingTask.concurrencyKey)
-        existingTask.concurrencyKey = undefined
-      }
+        this.releaseTaskResources(existingTask)
 
       removeTaskToastTracking(existingTask.id)
 
@@ -836,6 +926,33 @@ export class BackgroundManager {
     })
 
     return existingTask
+  }
+
+  async relaunchTask(taskId: string, prompt?: string): Promise<BackgroundTask> {
+    const task = this.tasks.get(taskId)
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`)
+    }
+
+    return this.launch({
+      description: task.description,
+      prompt: prompt ?? task.prompt,
+      agent: task.agent,
+      parentSessionID: task.parentSessionID,
+      parentMessageID: task.parentMessageID,
+      parentModel: task.parentModel,
+      parentAgent: task.parentAgent,
+      parentTools: task.parentTools,
+      model: task.model,
+      fallbackChain: task.fallbackChain,
+      isUnstableAgent: task.isUnstableAgent,
+      category: task.category,
+      ownershipBundle: task.ownershipBundle,
+      ownershipResources: task.ownershipResources,
+      writeCapable: task.writeCapable,
+      serialWave: task.serialWave,
+      draftStart: task.draftStart,
+    })
   }
 
   private async checkSessionTodos(sessionID: string): Promise<boolean> {
@@ -1011,10 +1128,7 @@ export class BackgroundManager {
       task.completedAt = new Date()
       this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "error", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt })
 
-      if (task.concurrencyKey) {
-        this.concurrencyManager.release(task.concurrencyKey)
-        task.concurrencyKey = undefined
-      }
+      this.releaseTaskResources(task)
 
       const completionTimer = this.completionTimers.get(task.id)
       if (completionTimer) {
@@ -1348,10 +1462,7 @@ export class BackgroundManager {
     }
     this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "cancelled", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt })
 
-    if (task.concurrencyKey) {
-      this.concurrencyManager.release(task.concurrencyKey)
-      task.concurrencyKey = undefined
-    }
+    this.releaseTaskResources(task)
 
     const existingTimer = this.completionTimers.get(task.id)
     if (existingTimer) {
@@ -1466,10 +1577,7 @@ export class BackgroundManager {
     removeTaskToastTracking(task.id)
 
     // Release concurrency BEFORE any async operations to prevent slot leaks
-    if (task.concurrencyKey) {
-      this.concurrencyManager.release(task.concurrencyKey)
-      task.concurrencyKey = undefined
-    }
+    this.releaseTaskResources(task)
 
     this.markForNotification(task)
 
@@ -1702,10 +1810,7 @@ Use \`background_output(task_id="${task.id}")\` to retrieve this result when rea
         task.error = errorMessage
         task.completedAt = new Date()
         this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "error", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt })
-        if (task.concurrencyKey) {
-          this.concurrencyManager.release(task.concurrencyKey)
-          task.concurrencyKey = undefined
-        }
+        this.releaseTaskResources(task)
         removeTaskToastTracking(task.id)
         const existingTimer = this.completionTimers.get(taskId)
         if (existingTimer) {
@@ -1883,10 +1988,7 @@ Use \`background_output(task_id="${task.id}")\` to retrieve this result when rea
 
     // Release concurrency for all running tasks
     for (const task of this.tasks.values()) {
-      if (task.concurrencyKey) {
-        this.concurrencyManager.release(task.concurrencyKey)
-        task.concurrencyKey = undefined
-      }
+      this.releaseTaskResources(task)
     }
 
     for (const timer of this.completionTimers.values()) {

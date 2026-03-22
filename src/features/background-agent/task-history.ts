@@ -13,6 +13,14 @@ export interface TaskHistoryEntry {
   completedAt?: Date
 }
 
+function cloneEntry(entry: TaskHistoryEntry): TaskHistoryEntry {
+  return {
+    ...entry,
+    ...(entry.startedAt ? { startedAt: new Date(entry.startedAt) } : {}),
+    ...(entry.completedAt ? { completedAt: new Date(entry.completedAt) } : {}),
+  }
+}
+
 export class TaskHistory {
   private entries: Map<string, TaskHistoryEntry[]> = new Map()
 
@@ -47,7 +55,17 @@ export class TaskHistory {
   getByParentSession(parentSessionID: string): TaskHistoryEntry[] {
     const list = this.entries.get(parentSessionID)
     if (!list) return []
-    return list.map((e) => ({ ...e }))
+    return list.map(cloneEntry)
+  }
+
+  listAll(): Array<{ parentSessionID: string; entry: TaskHistoryEntry }> {
+    const result: Array<{ parentSessionID: string; entry: TaskHistoryEntry }> = []
+    for (const [parentSessionID, entries] of this.entries.entries()) {
+      for (const entry of entries) {
+        result.push({ parentSessionID, entry: cloneEntry(entry) })
+      }
+    }
+    return result
   }
 
   clearSession(parentSessionID: string): void {

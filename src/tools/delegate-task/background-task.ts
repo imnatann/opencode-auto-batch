@@ -5,6 +5,7 @@ import { getTimingConfig } from "./timing"
 import { buildTaskPrompt } from "./prompt-builder"
 import { storeToolMetadata } from "../../features/tool-metadata-store"
 import { formatDetailedError } from "./error-formatting"
+import { extractOwnershipMetadata } from "../../shared"
 import { getSessionTools } from "../../shared/session-tools-store"
 import { SessionCategoryRegistry } from "../../shared/session-category-registry"
 import { QUESTION_DENIED_SESSION_PERMISSION } from "../../shared/question-denied-session-permission"
@@ -23,6 +24,7 @@ export async function executeBackgroundTask(
 
   try {
     const effectivePrompt = buildTaskPrompt(args.prompt, agentToUse)
+    const ownership = extractOwnershipMetadata(effectivePrompt)
     const task = await manager.launch({
       description: args.description,
       prompt: effectivePrompt,
@@ -38,6 +40,11 @@ export async function executeBackgroundTask(
       skillContent: systemContent,
       category: args.category,
       sessionPermission: QUESTION_DENIED_SESSION_PERMISSION,
+      ownershipBundle: ownership.ownershipBundle,
+      ownershipResources: ownership.ownershipResources,
+      writeCapable: ownership.writeCapable,
+      serialWave: ownership.serialWave,
+      draftStart: ownership.draftStart,
     })
 
     // OpenCode TUI's `Task` tool UI calculates toolcalls by looking up
