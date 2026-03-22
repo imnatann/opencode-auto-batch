@@ -101,6 +101,11 @@
   "notification": {
     "force_enable": true
   },
+  "experimental": {
+    "workflow_preset": "bugfix",
+    "analytics": true,
+    "workspace_batching": true
+  },
   "background_task": {
     "defaultConcurrency": 20,
     "providerConcurrency": {

@@ -34,6 +34,16 @@ This package currently concentrates on five areas that are realistic to improve 
 - doctor can warn when override models are not advertised in the cached provider model list
 - diagnostics remain non-destructive and rely on the current runtime cache/state
 
+## 6. Workflow Presets And Analytics
+
+- workflow presets can bias front-door prompts toward bugfix, feature, audit, or refactor behavior
+- analytics stay local and lightweight: running, queued, completed, stalled, and retried counts are enough to expose bottlenecks
+
+## 7. Workspace-Aware Batching
+
+- monorepo/package boundaries should influence ownership planning
+- package roots, lockfiles, shared configs, schemas, generated outputs, and cross-package tests should be treated as collision boundaries
+
 ## Important Boundary
 
 These improvements live at the plugin layer.

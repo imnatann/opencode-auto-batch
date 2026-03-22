@@ -27,6 +27,15 @@ type AgentConfigRecord = Record<string, Record<string, unknown> | undefined> & {
   plan?: Record<string, unknown>;
 };
 
+function appendPrompt(agent: Record<string, unknown> | undefined, text: string | undefined) {
+  if (!agent || !text) return agent;
+  const current = typeof agent.prompt_append === "string" ? agent.prompt_append : "";
+  return {
+    ...agent,
+    prompt_append: current ? `${current}\n\n${text}` : text,
+  };
+}
+
 function getConfiguredDefaultAgent(config: Record<string, unknown>): string | undefined {
   const defaultAgent = config.default_agent;
   if (typeof defaultAgent !== "string") return undefined;
@@ -41,6 +50,25 @@ export async function applyAgentConfig(params: {
   ctx: { directory: string; client?: any };
   pluginComponents: PluginComponents;
 }): Promise<Record<string, unknown>> {
+  const preset = params.pluginConfig.experimental?.workflow_preset;
+  const analytics = params.pluginConfig.experimental?.analytics === true;
+  const workspaceBatching = params.pluginConfig.experimental?.workspace_batching === true;
+  const presetPrompt = preset === "bugfix"
+    ? "Default workflow preset: Bugfix. Prioritize root-cause analysis, minimal safe fixes, and targeted verification before broad refactors."
+    : preset === "feature"
+      ? "Default workflow preset: Feature. Prioritize implementation planning, ownership bundles, and verification that covers new paths and regressions."
+      : preset === "audit"
+        ? "Default workflow preset: Audit. Prioritize read-heavy analysis, risk surfacing, and staged recommendations before any write-capable work."
+        : preset === "refactor"
+          ? "Default workflow preset: Refactor. Prioritize safe decomposition, ownership boundaries, and regression-oriented verification while preserving behavior."
+          : undefined;
+  const analyticsPrompt = analytics
+    ? "Include lightweight execution analytics in major summaries: mention running, queued, completed, stalled, and retried worker counts when they are relevant."
+    : undefined;
+  const workspacePrompt = workspaceBatching
+    ? "Workspace-aware batching is enabled. Treat package roots, app folders, shared configs, lockfiles, schemas, generated outputs, and cross-package tests as collision boundaries when planning ownership bundles."
+    : undefined;
+  const extraPrompt = [presetPrompt, analyticsPrompt, workspacePrompt].filter(Boolean).join("\n\n") || undefined;
   const migratedDisabledAgents = (params.pluginConfig.disabled_agents ?? []).map(
     (agent) => {
       return AGENT_NAME_MAP[agent.toLowerCase()] ?? AGENT_NAME_MAP[agent] ?? agent;
@@ -272,6 +300,14 @@ export async function applyAgentConfig(params: {
   }
 
   if (params.config.agent) {
+    if (extraPrompt) {
+      const agentConfig = params.config.agent as AgentConfigRecord;
+      for (const name of ["sisyphus", "atlas", "prometheus", "OpenCode-Builder", "build", "plan"]) {
+        const current = agentConfig[name];
+        if (!current || typeof current !== "object") continue;
+        agentConfig[name] = appendPrompt(current as Record<string, unknown>, extraPrompt);
+      }
+    }
     params.config.agent = remapAgentKeysToDisplayNames(
       params.config.agent as Record<string, unknown>,
     );

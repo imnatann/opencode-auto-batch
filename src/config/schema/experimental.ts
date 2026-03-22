@@ -21,6 +21,9 @@ export const ExperimentalConfigSchema = z.object({
   hashline_edit: z.boolean().optional(),
   /** Append fallback model info to session title when a runtime fallback occurs (default: false) */
   model_fallback_title: z.boolean().optional(),
+  workflow_preset: z.enum(["bugfix", "feature", "audit", "refactor"]).optional(),
+  analytics: z.boolean().optional(),
+  workspace_batching: z.boolean().optional(),
 })
 
 export type ExperimentalConfig = z.infer<typeof ExperimentalConfigSchema>
