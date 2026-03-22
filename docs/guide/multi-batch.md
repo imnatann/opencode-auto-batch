@@ -21,6 +21,29 @@ The coordinator does four things:
 3. build ownership groups and dependency waves
 4. start every safe worker immediately
 
+## Ownership Plan
+
+Before a parallel write wave begins, the planner/orchestrator should emit an ownership plan with explicit bundle IDs.
+
+Example:
+
+```text
+OWNERSHIP PLAN:
+- Bundles:
+  - O1: auth API updates -> src/api/auth/*, route registry
+  - O2: readiness audit -> read-only
+  - O3: dashboard UI changes -> src/ui/dashboard/*
+- Collision Boundaries:
+  - src/routes/index.ts shared by O1 and O3
+- Serial Waves:
+  - Wave 1: O1, O2
+  - Wave 2: O3
+- Draft-Start Tasks:
+  - D1: roadmap synthesis can start as read-only draft
+```
+
+Without that structure, parallel writes are advisory at best.
+
 ## Read Work vs Write Work
 
 ### Read-only work
