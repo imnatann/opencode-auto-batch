@@ -18227,6 +18227,54 @@ function isAnyProviderConnected(providers, availableModels) {
   }
   return false;
 }
+// src/shared/ownership-metadata.ts
+function parseList(raw) {
+  return raw.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
+}
+function parseWave(raw) {
+  if (!raw)
+    return;
+  const match = raw.match(/(\d+)/);
+  if (!match)
+    return;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+function extractOwnershipMetadata(prompt) {
+  const bundle = prompt.match(/Ownership Bundle:\s*(O\d+)(?:\s*->\s*([^\n]+))?/i);
+  const resources = prompt.match(/Owned Resources:\s*([^\n]+)/i);
+  const readOnly = /\bRead-Only:\s*(true|yes)\b/i.test(prompt) || /\bread-only bundle\b/i.test(prompt);
+  const writeCapable = /\bWrite-Capable:\s*(true|yes)\b/i.test(prompt) || /\bwrite-capable\b/i.test(prompt);
+  const wave = prompt.match(/Serial Wave:\s*([^\n]+)/i);
+  const draft = /\bDraft-Start:\s*(true|yes)\b/i.test(prompt) || /\bdraft-safe\b/i.test(prompt);
+  const bundleResources = bundle?.[2] ? parseList(bundle[2]) : [];
+  const explicitResources = resources?.[1] ? parseList(resources[1]) : [];
+  const ownershipResources = Array.from(new Set([...bundleResources, ...explicitResources]));
+  const ownershipBundle = bundle?.[1];
+  const resolvedWriteCapable = writeCapable ? true : readOnly ? false : undefined;
+  return {
+    ownershipBundle,
+    ownershipResources: ownershipResources.length > 0 ? ownershipResources : undefined,
+    writeCapable: resolvedWriteCapable,
+    serialWave: parseWave(wave?.[1]),
+    draftStart: draft || undefined
+  };
+}
+function resolveOwnershipKeys(input) {
+  if (!input.writeCapable)
+    return [];
+  const keys = new Set;
+  for (const item of input.ownershipResources ?? []) {
+    keys.add(`resource:${item.toLowerCase()}`);
+  }
+  if (keys.size === 0 && input.ownershipBundle) {
+    keys.add(`bundle:${input.parentSessionID}:${input.ownershipBundle.toLowerCase()}`);
+  }
+  if (keys.size === 0) {
+    keys.add(`unplanned-write:${input.parentSessionID}`);
+  }
+  return Array.from(keys);
+}
 // src/features/hook-message-injector/injector.ts
 import { existsSync as existsSync10, mkdirSync as mkdirSync3, readFileSync as readFileSync6, readdirSync, writeFileSync as writeFileSync3 } from "fs";
 import { randomBytes } from "crypto";
@@ -38722,7 +38770,8 @@ class TaskToastManager {
         const isNew = task.id === newTask.id ? " \u2190 NEW" : "";
         const taskId = formatTaskIdentifier(task);
         const skillsInfo = task.skills?.length ? ` [${task.skills.join(", ")}]` : "";
-        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - ${duration3}${isNew}`);
+        const sessionInfo = task.sessionID ? ` | ${task.sessionID}` : "";
+        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - ${duration3}${sessionInfo}${isNew}`);
       }
     }
     if (queued.length > 0) {
@@ -38734,7 +38783,8 @@ class TaskToastManager {
         const taskId = formatTaskIdentifier(task);
         const skillsInfo = task.skills?.length ? ` [${task.skills.join(", ")}]` : "";
         const isNew = task.id === newTask.id ? " \u2190 NEW" : "";
-        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - Queued${isNew}`);
+        const sessionInfo = task.sessionID ? ` | ${task.sessionID}` : "";
+        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - Queued${sessionInfo}${isNew}`);
       }
     }
     return lines.join(`
@@ -47467,7 +47517,10 @@ var ExperimentalConfigSchema = exports_external.object({
   safe_hook_creation: exports_external.boolean().optional(),
   disable_omo_env: exports_external.boolean().optional(),
   hashline_edit: exports_external.boolean().optional(),
-  model_fallback_title: exports_external.boolean().optional()
+  model_fallback_title: exports_external.boolean().optional(),
+  workflow_preset: exports_external.enum(["bugfix", "feature", "audit", "refactor"]).optional(),
+  analytics: exports_external.boolean().optional(),
+  workspace_batching: exports_external.boolean().optional()
 });
 // src/config/schema/git-env-prefix.ts
 var GIT_ENV_ASSIGNMENT_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_-]*)(?: [A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_-]*)*$/;
@@ -72711,6 +72764,56 @@ Status: ${task.status}`;
     }
   });
 }
+// src/tools/background-task/create-background-recover.ts
+function createBackgroundRecover(manager) {
+  return tool({
+    description: "Attempts recovery for a background task by continuing its session or relaunching it.",
+    args: {
+      taskId: tool.schema.string().describe("Background task ID to recover."),
+      mode: tool.schema.enum(["continue", "relaunch", "cancel_and_relaunch"]).optional().describe("Recovery mode (default: continue)."),
+      prompt: tool.schema.string().optional().describe("Optional recovery prompt override.")
+    },
+    async execute(args) {
+      const mode = args.mode ?? "continue";
+      const task = manager.getTask(args.taskId);
+      if (!task) {
+        return `[ERROR] Task not found: ${args.taskId}`;
+      }
+      if (mode === "continue") {
+        if (!task.sessionID) {
+          return `[ERROR] Task ${task.id} does not have a session yet, so it cannot be continued.`;
+        }
+        const resumed = await manager.resume({
+          sessionId: task.sessionID,
+          prompt: args.prompt ?? "Continue from the latest valid context and finish the task.",
+          parentSessionID: task.parentSessionID,
+          parentMessageID: task.parentMessageID,
+          parentModel: task.parentModel,
+          parentAgent: task.parentAgent,
+          parentTools: task.parentTools
+        });
+        return `Recovery started via continuation.
+
+Task ID: ${resumed.id}
+Session ID: ${resumed.sessionID}
+Status: ${resumed.status}`;
+      }
+      if (mode === "cancel_and_relaunch" && (task.status === "running" || task.status === "pending")) {
+        await manager.cancelTask(task.id, {
+          source: "background_recover",
+          abortSession: task.status === "running",
+          skipNotification: true
+        });
+      }
+      const relaunched = await manager.relaunchTask(args.taskId, args.prompt);
+      return `Recovery started via relaunch.
+
+Original Task ID: ${task.id}
+New Task ID: ${relaunched.id}
+Status: ${relaunched.status}`;
+    }
+  });
+}
 // src/tools/call-omo-agent/constants.ts
 var ALLOWED_AGENTS = [
   "explore",
@@ -74557,6 +74660,7 @@ async function executeBackgroundTask(args, ctx, executorCtx, parentContext, agen
   const { manager } = executorCtx;
   try {
     const effectivePrompt = buildTaskPrompt(args.prompt, agentToUse);
+    const ownership = extractOwnershipMetadata(effectivePrompt);
     const task = await manager.launch({
       description: args.description,
       prompt: effectivePrompt,
@@ -74571,7 +74675,12 @@ async function executeBackgroundTask(args, ctx, executorCtx, parentContext, agen
       skills: args.load_skills.length > 0 ? args.load_skills : undefined,
       skillContent: systemContent,
       category: args.category,
-      sessionPermission: QUESTION_DENIED_SESSION_PERMISSION
+      sessionPermission: QUESTION_DENIED_SESSION_PERMISSION,
+      ownershipBundle: ownership.ownershipBundle,
+      ownershipResources: ownership.ownershipResources,
+      writeCapable: ownership.writeCapable,
+      serialWave: ownership.serialWave,
+      draftStart: ownership.draftStart
     });
     const timing = getTimingConfig();
     const waitStart = Date.now();
@@ -77552,13 +77661,138 @@ function createHashlineEditTool() {
     execute: async (args, context) => executeHashlineEditTool(args, context)
   });
 }
+// src/tools/subagent-panel/tools.ts
+function truncatePreview(value, max = 180) {
+  if (!value)
+    return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length === 0)
+    return null;
+  if (normalized.length <= max)
+    return normalized;
+  return `${normalized.slice(0, max - 3)}...`;
+}
+function taskPreview(task) {
+  return truncatePreview(task.progress?.lastMessage) ?? truncatePreview(task.result) ?? truncatePreview(task.error);
+}
+function historyPreview(entry) {
+  return truncatePreview(entry.description);
+}
+function sortTask(a, b) {
+  const aTime = a.startedAt?.getTime() ?? a.queuedAt?.getTime() ?? 0;
+  const bTime = b.startedAt?.getTime() ?? b.queuedAt?.getTime() ?? 0;
+  return bTime - aTime;
+}
+function formatTaskLine(task) {
+  const durationStart = task.startedAt ?? task.queuedAt ?? new Date;
+  const duration5 = formatDuration(durationStart, task.completedAt);
+  const category = task.category ? ` [${task.category}]` : "";
+  const model = task.model ? ` | model: ${task.model.providerID}/${task.model.modelID}` : "";
+  const lastTool = task.progress?.lastTool ? ` | last tool: ${task.progress.lastTool}` : "";
+  const session = task.sessionID ? ` | session: \`${task.sessionID}\`` : "";
+  const preview = taskPreview(task);
+  return [
+    `- **${task.description}**`,
+    `  - status: \`${task.status}\` | agent: \`${task.agent}\`${category}${model}${lastTool}${session}`,
+    `  - duration: ${duration5}`,
+    ...preview ? [`  - preview: ${preview}`] : []
+  ].join(`
+`);
+}
+function formatHistoryLine(entry) {
+  const duration5 = entry.startedAt ? formatDuration(entry.startedAt, entry.completedAt) : "n/a";
+  const session = entry.sessionID ? ` | session: \`${entry.sessionID}\`` : "";
+  const category = entry.category ? ` [${entry.category}]` : "";
+  const preview = historyPreview(entry);
+  return [
+    `- **${entry.description}**`,
+    `  - status: \`${entry.status}\` | agent: \`${entry.agent}\`${category}${session}`,
+    `  - duration: ${duration5}`,
+    ...preview ? [`  - preview: ${preview}`] : []
+  ].join(`
+`);
+}
+function createSubagentPanelTool(manager) {
+  return tool({
+    description: "Shows a sidebar-style snapshot of subagents, statuses, and previews for the current or specified session tree.",
+    args: {
+      session_id: tool.schema.string().optional().describe("Root session ID to inspect. Defaults to the current session."),
+      include_completed: tool.schema.boolean().optional().describe("Include recent completed history for the selected session tree (default: true)."),
+      limit: tool.schema.number().optional().describe("Max rows per section (default: 12).")
+    },
+    async execute(args, toolContext) {
+      const ctx = toolContext;
+      const rootSessionID = args.session_id ?? ctx.sessionID;
+      const limit = Math.max(1, Math.min(args.limit ?? 12, 50));
+      const includeCompleted = args.include_completed ?? true;
+      const descendantTasks = manager.getAllDescendantTasks(rootSessionID).sort(sortTask);
+      const descendantSessionIDs = new Set(descendantTasks.map((task) => task.sessionID).filter((value) => Boolean(value)));
+      descendantSessionIDs.add(rootSessionID);
+      const history = includeCompleted ? manager.listAllTaskHistory().filter(({ parentSessionID }) => descendantSessionIDs.has(parentSessionID)).map(({ entry }) => entry).sort((a, b) => (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0)) : [];
+      const running = descendantTasks.filter((task) => task.status === "running").slice(0, limit);
+      const queued = descendantTasks.filter((task) => task.status === "pending").slice(0, limit);
+      const terminal = descendantTasks.filter((task) => ["completed", "error", "cancelled", "interrupt"].includes(task.status)).slice(0, limit);
+      const completedHistory = history.filter((entry) => ["completed", "error", "cancelled", "interrupt"].includes(entry.status)).slice(0, limit);
+      const stalled = descendantTasks.filter((task) => {
+        if (task.status !== "running")
+          return false;
+        const last = task.progress?.lastUpdate?.getTime();
+        return typeof last === "number" && Date.now() - last > 10 * 60000;
+      }).length;
+      const retried = descendantTasks.filter((task) => (task.attemptCount ?? 0) > 0).length;
+      const writeCapable = descendantTasks.filter((task) => task.writeCapable).length;
+      const workspaces = new Set(descendantTasks.flatMap((task) => task.ownershipResources ?? []).map((item) => item.split("/")[0]).filter(Boolean));
+      ctx.metadata?.({
+        title: `Subagent Panel - ${rootSessionID}`,
+        metadata: {
+          sessionId: rootSessionID,
+          running: running.length,
+          queued: queued.length,
+          terminal: terminal.length,
+          history: completedHistory.length,
+          stalled,
+          retried
+        }
+      });
+      const sections = [];
+      sections.push(`# Subagent Panel`);
+      sections.push(`- Root session: \`${rootSessionID}\``);
+      sections.push(`- Active descendants: ${descendantTasks.length}`);
+      sections.push(`- Running: ${running.length} | Queued: ${queued.length} | Terminal in memory: ${terminal.length}${includeCompleted ? ` | History: ${completedHistory.length}` : ""}`);
+      sections.push(`- Stalled: ${stalled} | Retried: ${retried} | Write-capable: ${writeCapable} | Workspace roots: ${workspaces.size}`);
+      sections.push(`
+## Running`);
+      sections.push(running.length > 0 ? running.map(formatTaskLine).join(`
+`) : `- None`);
+      sections.push(`
+## Queued`);
+      sections.push(queued.length > 0 ? queued.map(formatTaskLine).join(`
+`) : `- None`);
+      sections.push(`
+## Terminal (still in memory)`);
+      sections.push(terminal.length > 0 ? terminal.map(formatTaskLine).join(`
+`) : `- None`);
+      if (includeCompleted) {
+        sections.push(`
+## Recent Completed History`);
+        sections.push(completedHistory.length > 0 ? completedHistory.map(formatHistoryLine).join(`
+`) : `- None`);
+      }
+      sections.push(`
+> This is the plugin-side sidebar snapshot. A persistent right sidebar still requires an OpenCode core UI patch.`);
+      return sections.join(`
+`);
+    }
+  });
+}
 // src/tools/index.ts
 function createBackgroundTools(manager, client2) {
   const outputManager = manager;
   const cancelClient = client2;
   return {
     background_output: createBackgroundOutput(outputManager, client2),
-    background_cancel: createBackgroundCancel(manager, cancelClient)
+    background_cancel: createBackgroundCancel(manager, cancelClient),
+    background_recover: createBackgroundRecover(manager)
   };
 }
 var builtinTools = {
@@ -78096,6 +78330,13 @@ function createHooks(args) {
 }
 // src/features/background-agent/task-history.ts
 var MAX_ENTRIES_PER_PARENT = 100;
+function cloneEntry(entry) {
+  return {
+    ...entry,
+    ...entry.startedAt ? { startedAt: new Date(entry.startedAt) } : {},
+    ...entry.completedAt ? { completedAt: new Date(entry.completedAt) } : {}
+  };
+}
 
 class TaskHistory {
   entries = new Map;
@@ -78128,7 +78369,16 @@ class TaskHistory {
     const list = this.entries.get(parentSessionID);
     if (!list)
       return [];
-    return list.map((e) => ({ ...e }));
+    return list.map(cloneEntry);
+  }
+  listAll() {
+    const result = [];
+    for (const [parentSessionID, entries] of this.entries.entries()) {
+      for (const entry of entries) {
+        result.push({ parentSessionID, entry: cloneEntry(entry) });
+      }
+    }
+    return result;
   }
   clearSession(parentSessionID) {
     this.entries.delete(parentSessionID);
@@ -78153,6 +78403,32 @@ class TaskHistory {
     });
     return lines.join(`
 `);
+  }
+}
+
+// src/features/background-agent/ownership.ts
+class OwnershipManager {
+  claims = new Map;
+  acquire(taskId, keys) {
+    for (const key of keys) {
+      const owner = this.claims.get(key);
+      if (owner && owner !== taskId)
+        return false;
+    }
+    for (const key of keys) {
+      this.claims.set(key, taskId);
+    }
+    return true;
+  }
+  release(taskId, keys) {
+    for (const key of keys ?? []) {
+      if (this.claims.get(key) === taskId) {
+        this.claims.delete(key);
+      }
+    }
+  }
+  owner(key) {
+    return this.claims.get(key);
   }
 }
 
@@ -78980,6 +79256,7 @@ class BackgroundManager {
   enableParentSessionNotifications;
   taskHistory = new TaskHistory;
   cachedCircuitBreakerSettings;
+  ownershipManager;
   constructor(ctx, config4, options) {
     this.tasks = new Map;
     this.notifications = new Map;
@@ -78995,7 +79272,47 @@ class BackgroundManager {
     this.rootDescendantCounts = new Map;
     this.preStartDescendantReservations = new Set;
     this.enableParentSessionNotifications = options?.enableParentSessionNotifications ?? true;
+    this.ownershipManager = new OwnershipManager;
     this.registerProcessCleanup();
+  }
+  releaseTaskResources(task) {
+    this.releaseTaskResources(task);
+    this.ownershipManager.release(task.id, task.ownershipKeys);
+    task.ownershipKeys = undefined;
+  }
+  tryAcquireOwnership(task) {
+    const keys = task.ownershipKeys ?? [];
+    if (keys.length === 0)
+      return true;
+    return this.ownershipManager.acquire(task.id, keys);
+  }
+  hasEarlierWaveRunning(task) {
+    if (!task.writeCapable || !task.serialWave || task.serialWave <= 1)
+      return false;
+    for (const other of this.tasks.values()) {
+      if (other.id === task.id)
+        continue;
+      if (other.parentSessionID !== task.parentSessionID)
+        continue;
+      if (!other.writeCapable)
+        continue;
+      if (!other.serialWave)
+        continue;
+      if (other.serialWave >= task.serialWave)
+        continue;
+      if (other.status === "running" || other.status === "pending")
+        return true;
+    }
+    return false;
+  }
+  buildTaskTitle(input) {
+    const tags = [
+      input.serialWave ? `W${input.serialWave}` : undefined,
+      input.ownershipBundle,
+      input.writeCapable === false ? "RO" : input.writeCapable ? "RW" : undefined
+    ].filter(Boolean);
+    const prefix = tags.length > 0 ? `[${tags.join(" ")}] ` : "";
+    return `${prefix}${input.description} (@${input.agent} subagent)`;
   }
   async assertCanSpawn(parentSessionID) {
     const spawnContext = await resolveSubagentSpawnContext(this.client, parentSessionID);
@@ -79101,7 +79418,18 @@ class BackgroundManager {
         model: input.model,
         fallbackChain: input.fallbackChain,
         attemptCount: 0,
-        category: input.category
+        category: input.category,
+        ownershipBundle: input.ownershipBundle,
+        ownershipResources: input.ownershipResources,
+        writeCapable: input.writeCapable,
+        serialWave: input.serialWave,
+        draftStart: input.draftStart,
+        ownershipKeys: resolveOwnershipKeys({
+          parentSessionID: input.parentSessionID,
+          ownershipBundle: input.ownershipBundle,
+          ownershipResources: input.ownershipResources,
+          writeCapable: input.writeCapable
+        })
       };
       this.tasks.set(task.id, task);
       this.taskHistory.record(input.parentSessionID, { id: task.id, agent: input.agent, description: input.description, status: "pending", category: input.category });
@@ -79153,16 +79481,25 @@ class BackgroundManager {
           this.concurrencyManager.release(key);
           continue;
         }
+        if (this.hasEarlierWaveRunning(item.task) || !this.tryAcquireOwnership(item.task)) {
+          this.concurrencyManager.release(key);
+          queue.push(item);
+          setTimeout(() => {
+            this.processKey(key);
+          }, 250);
+          return;
+        }
         try {
           await this.startTask(item);
         } catch (error92) {
           log("[background-agent] Error starting task:", error92);
           this.rollbackPreStartDescendantReservation(item.task);
           if (item.task.concurrencyKey) {
-            this.concurrencyManager.release(item.task.concurrencyKey);
-            item.task.concurrencyKey = undefined;
+            this.releaseTaskResources(item.task);
           } else {
             this.concurrencyManager.release(key);
+            this.ownershipManager.release(item.task.id, item.task.ownershipKeys);
+            item.task.ownershipKeys = undefined;
           }
         }
       }
@@ -79189,7 +79526,7 @@ class BackgroundManager {
     const createResult = await this.client.session.create({
       body: {
         parentID: input.parentSessionID,
-        title: `${input.description} (@${input.agent} subagent)`,
+        title: this.buildTaskTitle(input),
         ...input.sessionPermission ? { permission: input.sessionPermission } : {}
       },
       query: {
@@ -79210,6 +79547,8 @@ class BackgroundManager {
         log("[background-agent] Failed to abort cancelled pre-start session:", error92);
       });
       this.concurrencyManager.release(concurrencyKey);
+      this.ownershipManager.release(task.id, task.ownershipKeys);
+      task.ownershipKeys = undefined;
       return;
     }
     this.settlePreStartDescendantReservation(task);
@@ -79291,10 +79630,7 @@ class BackgroundManager {
           existingTask.error = errorMessage;
         }
         existingTask.completedAt = new Date;
-        if (existingTask.concurrencyKey) {
-          this.concurrencyManager.release(existingTask.concurrencyKey);
-          existingTask.concurrencyKey = undefined;
-        }
+        this.releaseTaskResources(existingTask);
         removeTaskToastTracking(existingTask.id);
         this.client.session.abort({
           path: { id: sessionID }
@@ -79308,6 +79644,31 @@ class BackgroundManager {
   }
   getTask(id) {
     return this.tasks.get(id);
+  }
+  listTasks() {
+    return Array.from(this.tasks.values()).map((task) => ({
+      ...task,
+      ...task.queuedAt ? { queuedAt: new Date(task.queuedAt) } : {},
+      ...task.startedAt ? { startedAt: new Date(task.startedAt) } : {},
+      ...task.completedAt ? { completedAt: new Date(task.completedAt) } : {},
+      ...task.progress ? {
+        progress: {
+          ...task.progress,
+          lastUpdate: new Date(task.progress.lastUpdate),
+          ...task.progress.lastMessageAt ? { lastMessageAt: new Date(task.progress.lastMessageAt) } : {}
+        }
+      } : {}
+    })).sort((a, b) => {
+      const aTime = a.startedAt?.getTime() ?? a.queuedAt?.getTime() ?? 0;
+      const bTime = b.startedAt?.getTime() ?? b.queuedAt?.getTime() ?? 0;
+      return bTime - aTime;
+    });
+  }
+  getTaskHistoryByParentSession(sessionID) {
+    return this.taskHistory.getByParentSession(sessionID);
+  }
+  listAllTaskHistory() {
+    return this.taskHistory.listAll();
   }
   getTasksByParentSession(sessionID) {
     const result = [];
@@ -79498,10 +79859,7 @@ class BackgroundManager {
       const errorMessage = error92 instanceof Error ? error92.message : String(error92);
       existingTask.error = errorMessage;
       existingTask.completedAt = new Date;
-      if (existingTask.concurrencyKey) {
-        this.concurrencyManager.release(existingTask.concurrencyKey);
-        existingTask.concurrencyKey = undefined;
-      }
+      this.releaseTaskResources(existingTask);
       removeTaskToastTracking(existingTask.id);
       if (existingTask.sessionID) {
         this.client.session.abort({
@@ -79514,6 +79872,31 @@ class BackgroundManager {
       });
     });
     return existingTask;
+  }
+  async relaunchTask(taskId, prompt) {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+    return this.launch({
+      description: task.description,
+      prompt: prompt ?? task.prompt,
+      agent: task.agent,
+      parentSessionID: task.parentSessionID,
+      parentMessageID: task.parentMessageID,
+      parentModel: task.parentModel,
+      parentAgent: task.parentAgent,
+      parentTools: task.parentTools,
+      model: task.model,
+      fallbackChain: task.fallbackChain,
+      isUnstableAgent: task.isUnstableAgent,
+      category: task.category,
+      ownershipBundle: task.ownershipBundle,
+      ownershipResources: task.ownershipResources,
+      writeCapable: task.writeCapable,
+      serialWave: task.serialWave,
+      draftStart: task.draftStart
+    });
   }
   async checkSessionTodos(sessionID) {
     try {
@@ -79659,10 +80042,7 @@ class BackgroundManager {
       task.error = errorMsg;
       task.completedAt = new Date;
       this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "error", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt });
-      if (task.concurrencyKey) {
-        this.concurrencyManager.release(task.concurrencyKey);
-        task.concurrencyKey = undefined;
-      }
+      this.releaseTaskResources(task);
       const completionTimer = this.completionTimers.get(task.id);
       if (completionTimer) {
         clearTimeout(completionTimer);
@@ -79923,10 +80303,7 @@ ${originalText}`;
       task.error = reason;
     }
     this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "cancelled", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt });
-    if (task.concurrencyKey) {
-      this.concurrencyManager.release(task.concurrencyKey);
-      task.concurrencyKey = undefined;
-    }
+    this.releaseTaskResources(task);
     const existingTimer = this.completionTimers.get(task.id);
     if (existingTimer) {
       clearTimeout(existingTimer);
@@ -80002,10 +80379,7 @@ ${originalText}`;
     task.completedAt = new Date;
     this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "completed", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt });
     removeTaskToastTracking(task.id);
-    if (task.concurrencyKey) {
-      this.concurrencyManager.release(task.concurrencyKey);
-      task.concurrencyKey = undefined;
-    }
+    this.releaseTaskResources(task);
     this.markForNotification(task);
     const idleTimer = this.idleDeferralTimers.get(task.id);
     if (idleTimer) {
@@ -80178,10 +80552,7 @@ Use \`background_output(task_id="${task.id}")\` to retrieve this result when rea
         task.error = errorMessage;
         task.completedAt = new Date;
         this.taskHistory.record(task.parentSessionID, { id: task.id, sessionID: task.sessionID, agent: task.agent, description: task.description, status: "error", category: task.category, startedAt: task.startedAt, completedAt: task.completedAt });
-        if (task.concurrencyKey) {
-          this.concurrencyManager.release(task.concurrencyKey);
-          task.concurrencyKey = undefined;
-        }
+        this.releaseTaskResources(task);
         removeTaskToastTracking(task.id);
         const existingTimer = this.completionTimers.get(taskId);
         if (existingTimer) {
@@ -80318,10 +80689,7 @@ Use \`background_output(task_id="${task.id}")\` to retrieve this result when rea
       }
     }
     for (const task of this.tasks.values()) {
-      if (task.concurrencyKey) {
-        this.concurrencyManager.release(task.concurrencyKey);
-        task.concurrencyKey = undefined;
-      }
+      this.releaseTaskResources(task);
     }
     for (const timer of this.completionTimers.values()) {
       clearTimeout(timer);
@@ -95966,6 +96334,17 @@ function buildPlanDemoteConfig(prometheusConfig, planOverride) {
 }
 
 // src/plugin-handlers/agent-config-handler.ts
+function appendPrompt(agent, text) {
+  if (!agent || !text)
+    return agent;
+  const current = typeof agent.prompt_append === "string" ? agent.prompt_append : "";
+  return {
+    ...agent,
+    prompt_append: current ? `${current}
+
+${text}` : text
+  };
+}
 function getConfiguredDefaultAgent(config4) {
   const defaultAgent = config4.default_agent;
   if (typeof defaultAgent !== "string")
@@ -95974,6 +96353,15 @@ function getConfiguredDefaultAgent(config4) {
   return trimmedDefaultAgent.length > 0 ? trimmedDefaultAgent : undefined;
 }
 async function applyAgentConfig(params) {
+  const preset = params.pluginConfig.experimental?.workflow_preset;
+  const analytics = params.pluginConfig.experimental?.analytics === true;
+  const workspaceBatching = params.pluginConfig.experimental?.workspace_batching === true;
+  const presetPrompt = preset === "bugfix" ? "Default workflow preset: Bugfix. Prioritize root-cause analysis, minimal safe fixes, and targeted verification before broad refactors." : preset === "feature" ? "Default workflow preset: Feature. Prioritize implementation planning, ownership bundles, and verification that covers new paths and regressions." : preset === "audit" ? "Default workflow preset: Audit. Prioritize read-heavy analysis, risk surfacing, and staged recommendations before any write-capable work." : preset === "refactor" ? "Default workflow preset: Refactor. Prioritize safe decomposition, ownership boundaries, and regression-oriented verification while preserving behavior." : undefined;
+  const analyticsPrompt = analytics ? "Include lightweight execution analytics in major summaries: mention running, queued, completed, stalled, and retried worker counts when they are relevant." : undefined;
+  const workspacePrompt = workspaceBatching ? "Workspace-aware batching is enabled. Treat package roots, app folders, shared configs, lockfiles, schemas, generated outputs, and cross-package tests as collision boundaries when planning ownership bundles." : undefined;
+  const extraPrompt = [presetPrompt, analyticsPrompt, workspacePrompt].filter(Boolean).join(`
+
+`) || undefined;
   const migratedDisabledAgents = (params.pluginConfig.disabled_agents ?? []).map((agent) => {
     return AGENT_NAME_MAP[agent.toLowerCase()] ?? AGENT_NAME_MAP[agent] ?? agent;
   });
@@ -96107,6 +96495,15 @@ async function applyAgentConfig(params) {
     };
   }
   if (params.config.agent) {
+    if (extraPrompt) {
+      const agentConfig = params.config.agent;
+      for (const name of ["sisyphus", "atlas", "prometheus", "OpenCode-Builder", "build", "plan"]) {
+        const current = agentConfig[name];
+        if (!current || typeof current !== "object")
+          continue;
+        agentConfig[name] = appendPrompt(current, extraPrompt);
+      }
+    }
     params.config.agent = remapAgentKeysToDisplayNames(params.config.agent);
     params.config.agent = reorderAgentsByPriority(params.config.agent);
   }
@@ -96909,6 +97306,7 @@ function createToolRegistry(args) {
     call_omo_agent: callOmoAgent,
     ...lookAt ? { look_at: lookAt } : {},
     task: delegateTask,
+    subagent_panel: createSubagentPanelTool(managers.backgroundManager),
     skill_mcp: skillMcpTool,
     skill: skillTool,
     interactive_bash,

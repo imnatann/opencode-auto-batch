@@ -6854,7 +6854,6 @@ var init_fallback_model_availability = __esm(() => {
   init_logger();
   init_model_availability();
 });
-
 // src/features/hook-message-injector/constants.ts
 var init_constants = __esm(() => {
   init_shared();
@@ -24521,7 +24520,10 @@ var ExperimentalConfigSchema = exports_external.object({
   safe_hook_creation: exports_external.boolean().optional(),
   disable_omo_env: exports_external.boolean().optional(),
   hashline_edit: exports_external.boolean().optional(),
-  model_fallback_title: exports_external.boolean().optional()
+  model_fallback_title: exports_external.boolean().optional(),
+  workflow_preset: exports_external.enum(["bugfix", "feature", "audit", "refactor"]).optional(),
+  analytics: exports_external.boolean().optional(),
+  workspace_batching: exports_external.boolean().optional()
 });
 // src/config/schema/git-env-prefix.ts
 var GIT_ENV_ASSIGNMENT_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_-]*)(?: [A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_-]*)*$/;
@@ -27919,7 +27921,7 @@ async function checkSystem() {
 }
 
 // src/cli/doctor/checks/config.ts
-import { readFileSync as readFileSync24 } from "fs";
+import { existsSync as existsSync26, readFileSync as readFileSync24 } from "fs";
 import { join as join23 } from "path";
 init_shared();
 
@@ -28181,6 +28183,19 @@ function validateConfig() {
     };
   }
 }
+function readOpenCodeConfig() {
+  const dir = getOpenCodeConfigDir({ binary: "opencode" });
+  const jsonc = join23(dir, "opencode.jsonc");
+  const json3 = join23(dir, "opencode.json");
+  const path10 = existsSync26(jsonc) ? jsonc : existsSync26(json3) ? json3 : null;
+  if (!path10)
+    return null;
+  try {
+    return parseJsonc(readFileSync24(path10, "utf-8"));
+  } catch {
+    return null;
+  }
+}
 function collectModelResolutionIssues(config2) {
   const issues = [];
   const availableModels = loadAvailableModelsFromCache();
@@ -28251,6 +28266,25 @@ async function checkConfig() {
   if (validation.config) {
     issues.push(...collectModelResolutionIssues(validation.config));
   }
+  const opencode = readOpenCodeConfig();
+  const plugins = opencode?.plugin ?? [];
+  const duplicates = plugins.filter((entry) => entry.includes("oh-my-opencode") || entry.includes("opencode-auto-batch"));
+  if (duplicates.length > 1) {
+    issues.push({
+      title: "Multiple auto-batch style plugins registered",
+      description: `OpenCode plugin list contains overlapping entries: ${duplicates.join(", ")}`,
+      severity: "warning",
+      affects: ["plugin loading", "routing consistency"]
+    });
+  }
+  if (opencode?.default_agent && opencode.default_agent !== "auto") {
+    issues.push({
+      title: "Default agent drifts from auto",
+      description: `OpenCode default_agent is set to '${opencode.default_agent}' instead of 'auto'.`,
+      severity: "warning",
+      affects: ["routing", "batch execution"]
+    });
+  }
   return {
     name: CHECK_NAMES[CHECK_IDS.CONFIG],
     status: issues.length > 0 ? "warn" : "pass",
@@ -28262,7 +28296,7 @@ async function checkConfig() {
 
 // src/cli/doctor/checks/dependencies.ts
 init_spawn_with_windows_hide();
-import { existsSync as existsSync26 } from "fs";
+import { existsSync as existsSync27 } from "fs";
 import { createRequire } from "module";
 import { dirname as dirname6, join as join24 } from "path";
 async function checkBinaryExists(binary2) {
@@ -28320,7 +28354,7 @@ async function checkAstGrepNapi() {
       path: null
     };
   } catch {
-    const { existsSync: existsSync27 } = await import("fs");
+    const { existsSync: existsSync28 } = await import("fs");
     const { join: join25 } = await import("path");
     const { homedir: homedir8 } = await import("os");
     const pathsToCheck = [
@@ -28328,7 +28362,7 @@ async function checkAstGrepNapi() {
       join25(process.cwd(), "node_modules", "@ast-grep", "napi")
     ];
     for (const napiPath of pathsToCheck) {
-      if (existsSync27(napiPath)) {
+      if (existsSync28(napiPath)) {
         return {
           name: "AST-Grep NAPI",
           required: false,
@@ -28354,7 +28388,7 @@ function findCommentCheckerPackageBinary() {
     const require2 = createRequire(import.meta.url);
     const pkgPath = require2.resolve("@code-yeongyu/comment-checker/package.json");
     const binaryPath = join24(dirname6(pkgPath), "bin", binaryName);
-    if (existsSync26(binaryPath))
+    if (existsSync27(binaryPath))
       return binaryPath;
   } catch {}
   return null;
@@ -28511,12 +28545,12 @@ var BUILTIN_SERVERS = {
   "kotlin-ls": { command: ["kotlin-lsp"], extensions: [".kt", ".kts"] }
 };
 // src/tools/lsp/server-config-loader.ts
-import { existsSync as existsSync27, readFileSync as readFileSync25 } from "fs";
+import { existsSync as existsSync28, readFileSync as readFileSync25 } from "fs";
 import { join as join25 } from "path";
 init_shared();
 init_jsonc_parser();
 function loadJsonFile(path10) {
-  if (!existsSync27(path10))
+  if (!existsSync28(path10))
     return null;
   try {
     return parseJsonc(readFileSync25(path10, "utf-8"));
@@ -28599,7 +28633,7 @@ function getMergedServers() {
 }
 
 // src/tools/lsp/server-installation.ts
-import { existsSync as existsSync28 } from "fs";
+import { existsSync as existsSync29 } from "fs";
 import { delimiter as delimiter2, join as join27 } from "path";
 
 // src/tools/lsp/server-path-bases.ts
@@ -28623,7 +28657,7 @@ function isServerInstalled(command) {
     return false;
   const cmd = command[0];
   if (cmd.includes("/") || cmd.includes("\\")) {
-    if (existsSync28(cmd))
+    if (existsSync29(cmd))
       return true;
   }
   const isWindows = process.platform === "win32";
@@ -28644,14 +28678,14 @@ function isServerInstalled(command) {
   const paths = pathEnv.split(delimiter2);
   for (const p2 of paths) {
     for (const suffix of exts) {
-      if (existsSync28(join27(p2, cmd + suffix))) {
+      if (existsSync29(join27(p2, cmd + suffix))) {
         return true;
       }
     }
   }
   for (const base of getLspServerAdditionalPathBases(process.cwd())) {
     for (const suffix of exts) {
-      if (existsSync28(join27(base, cmd + suffix))) {
+      if (existsSync29(join27(base, cmd + suffix))) {
         return true;
       }
     }
@@ -28713,7 +28747,7 @@ function getInstalledLspServers() {
 
 // src/cli/doctor/checks/tools-mcp.ts
 init_shared();
-import { existsSync as existsSync29, readFileSync as readFileSync26 } from "fs";
+import { existsSync as existsSync30, readFileSync as readFileSync26 } from "fs";
 import { homedir as homedir8 } from "os";
 import { join as join28 } from "path";
 var BUILTIN_MCP_SERVERS = ["context7", "grep_app"];
@@ -28727,7 +28761,7 @@ function getMcpConfigPaths() {
 function loadUserMcpConfig() {
   const servers = {};
   for (const configPath of getMcpConfigPaths()) {
-    if (!existsSync29(configPath))
+    if (!existsSync30(configPath))
       continue;
     try {
       const content = readFileSync26(configPath, "utf-8");
@@ -29248,7 +29282,7 @@ async function doctor(options = { mode: "default" }) {
 
 // src/features/mcp-oauth/storage.ts
 init_shared();
-import { chmodSync, existsSync as existsSync30, mkdirSync as mkdirSync6, readFileSync as readFileSync27, unlinkSync as unlinkSync4, writeFileSync as writeFileSync10 } from "fs";
+import { chmodSync, existsSync as existsSync31, mkdirSync as mkdirSync6, readFileSync as readFileSync27, unlinkSync as unlinkSync4, writeFileSync as writeFileSync10 } from "fs";
 import { dirname as dirname7, join as join29 } from "path";
 var STORAGE_FILE_NAME = "mcp-oauth.json";
 function getMcpOauthStoragePath() {
@@ -29289,7 +29323,7 @@ function buildKey(serverHost, resource) {
 }
 function readStore() {
   const filePath = getMcpOauthStoragePath();
-  if (!existsSync30(filePath)) {
+  if (!existsSync31(filePath)) {
     return null;
   }
   try {
@@ -29303,7 +29337,7 @@ function writeStore(store2) {
   const filePath = getMcpOauthStoragePath();
   try {
     const dir = dirname7(filePath);
-    if (!existsSync30(dir)) {
+    if (!existsSync31(dir)) {
       mkdirSync6(dir, { recursive: true });
     }
     writeFileSync10(filePath, JSON.stringify(store2, null, 2), { encoding: "utf-8", mode: 384 });
@@ -29338,7 +29372,7 @@ function deleteToken(serverHost, resource) {
   if (Object.keys(store2).length === 0) {
     try {
       const filePath = getMcpOauthStoragePath();
-      if (existsSync30(filePath)) {
+      if (existsSync31(filePath)) {
         unlinkSync4(filePath);
       }
       return true;

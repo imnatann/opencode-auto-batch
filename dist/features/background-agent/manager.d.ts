@@ -1,6 +1,7 @@
 import type { PluginInput } from "@opencode-ai/plugin";
 import type { BackgroundTask, LaunchInput, ResumeInput } from "./types";
 import { TaskHistory } from "./task-history";
+import type { TaskHistoryEntry } from "./task-history";
 import type { BackgroundTaskConfig, TmuxConfig } from "../../config/schema";
 import { type SubagentSpawnContext } from "./subagent-spawn-limits";
 interface EventProperties {
@@ -46,12 +47,17 @@ export declare class BackgroundManager {
     private enableParentSessionNotifications;
     readonly taskHistory: TaskHistory;
     private cachedCircuitBreakerSettings?;
+    private ownershipManager;
     constructor(ctx: PluginInput, config?: BackgroundTaskConfig, options?: {
         tmuxConfig?: TmuxConfig;
         onSubagentSessionCreated?: OnSubagentSessionCreated;
         onShutdown?: () => void | Promise<void>;
         enableParentSessionNotifications?: boolean;
     });
+    private releaseTaskResources;
+    private tryAcquireOwnership;
+    private hasEarlierWaveRunning;
+    private buildTaskTitle;
     assertCanSpawn(parentSessionID: string): Promise<SubagentSpawnContext>;
     reserveSubagentSpawn(parentSessionID: string): Promise<{
         spawnContext: SubagentSpawnContext;
@@ -68,6 +74,12 @@ export declare class BackgroundManager {
     private processKey;
     private startTask;
     getTask(id: string): BackgroundTask | undefined;
+    listTasks(): BackgroundTask[];
+    getTaskHistoryByParentSession(sessionID: string): TaskHistoryEntry[];
+    listAllTaskHistory(): Array<{
+        parentSessionID: string;
+        entry: TaskHistoryEntry;
+    }>;
     getTasksByParentSession(sessionID: string): BackgroundTask[];
     getAllDescendantTasks(sessionID: string): BackgroundTask[];
     findBySession(sessionID: string): BackgroundTask | undefined;
@@ -86,6 +98,7 @@ export declare class BackgroundManager {
         concurrencyKey?: string;
     }): Promise<BackgroundTask>;
     resume(input: ResumeInput): Promise<BackgroundTask>;
+    relaunchTask(taskId: string, prompt?: string): Promise<BackgroundTask>;
     private checkSessionTodos;
     handleEvent(event: Event): void;
     private tryFallbackRetry;

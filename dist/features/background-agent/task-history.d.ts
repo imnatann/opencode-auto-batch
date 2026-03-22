@@ -13,6 +13,10 @@ export declare class TaskHistory {
     private entries;
     record(parentSessionID: string | undefined, entry: TaskHistoryEntry): void;
     getByParentSession(parentSessionID: string): TaskHistoryEntry[];
+    listAll(): Array<{
+        parentSessionID: string;
+        entry: TaskHistoryEntry;
+    }>;
     clearSession(parentSessionID: string): void;
     clearAll(): void;
     formatForCompaction(parentSessionID: string): string | null;

@@ -1291,6 +1291,14 @@ export declare const OhMyOpenCodeConfigSchema: z.ZodObject<{
         disable_omo_env: z.ZodOptional<z.ZodBoolean>;
         hashline_edit: z.ZodOptional<z.ZodBoolean>;
         model_fallback_title: z.ZodOptional<z.ZodBoolean>;
+        workflow_preset: z.ZodOptional<z.ZodEnum<{
+            refactor: "refactor";
+            bugfix: "bugfix";
+            feature: "feature";
+            audit: "audit";
+        }>>;
+        analytics: z.ZodOptional<z.ZodBoolean>;
+        workspace_batching: z.ZodOptional<z.ZodBoolean>;
     }, z.core.$strip>>;
     auto_update: z.ZodOptional<z.ZodBoolean>;
     skills: z.ZodOptional<z.ZodUnion<readonly [z.ZodArray<z.ZodString>, z.ZodObject<{

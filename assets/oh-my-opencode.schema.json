@@ -3463,6 +3463,21 @@
         },
         "model_fallback_title": {
           "type": "boolean"
+        },
+        "workflow_preset": {
+          "type": "string",
+          "enum": [
+            "bugfix",
+            "feature",
+            "audit",
+            "refactor"
+          ]
+        },
+        "analytics": {
+          "type": "boolean"
+        },
+        "workspace_batching": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

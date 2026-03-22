@@ -17,5 +17,6 @@ export { createLookAt } from "./look-at";
 export { createDelegateTask } from "./delegate-task";
 export { createTaskCreateTool, createTaskGetTool, createTaskList, createTaskUpdateTool, } from "./task";
 export { createHashlineEditTool } from "./hashline-edit";
+export { createSubagentPanelTool } from "./subagent-panel";
 export declare function createBackgroundTools(manager: BackgroundManager, client: OpencodeClient): Record<string, ToolDefinition>;
 export declare const builtinTools: Record<string, ToolDefinition>;
