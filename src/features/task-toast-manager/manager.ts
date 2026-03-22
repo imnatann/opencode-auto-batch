@@ -160,7 +160,8 @@ export class TaskToastManager {
         const isNew = task.id === newTask.id ? " ← NEW" : ""
         const taskId = formatTaskIdentifier(task)
         const skillsInfo = task.skills?.length ? ` [${task.skills.join(", ")}]` : ""
-        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - ${duration}${isNew}`)
+        const sessionInfo = task.sessionID ? ` | ${task.sessionID}` : ""
+        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - ${duration}${sessionInfo}${isNew}`)
       }
     }
 
@@ -172,7 +173,8 @@ export class TaskToastManager {
         const taskId = formatTaskIdentifier(task)
         const skillsInfo = task.skills?.length ? ` [${task.skills.join(", ")}]` : ""
         const isNew = task.id === newTask.id ? " ← NEW" : ""
-        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - Queued${isNew}`)
+        const sessionInfo = task.sessionID ? ` | ${task.sessionID}` : ""
+        lines.push(`${bgIcon} ${task.description} (${taskId})${skillsInfo} - Queued${sessionInfo}${isNew}`)
       }
     }
 

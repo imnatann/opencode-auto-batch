@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { OhMyOpenCodeConfigSchema } from "../../../config"
@@ -18,6 +18,11 @@ interface ConfigValidationResult {
   valid: boolean
   config: OmoConfig | null
   errors: string[]
+}
+
+interface OpenCodeConfigShape {
+  default_agent?: string
+  plugin?: string[]
 }
 
 function findConfigPath(): string | null {
@@ -60,6 +65,19 @@ function validateConfig(): ConfigValidationResult {
       config: null,
       errors: [error instanceof Error ? error.message : "Failed to parse config"],
     }
+  }
+}
+
+function readOpenCodeConfig(): OpenCodeConfigShape | null {
+  const dir = getOpenCodeConfigDir({ binary: "opencode" })
+  const jsonc = join(dir, "opencode.jsonc")
+  const json = join(dir, "opencode.json")
+  const path = existsSync(jsonc) ? jsonc : existsSync(json) ? json : null
+  if (!path) return null
+  try {
+    return parseJsonc<OpenCodeConfigShape>(readFileSync(path, "utf-8"))
+  } catch {
+    return null
   }
 }
 
@@ -152,6 +170,27 @@ export async function checkConfig(): Promise<CheckResult> {
 
   if (validation.config) {
     issues.push(...collectModelResolutionIssues(validation.config))
+  }
+
+  const opencode = readOpenCodeConfig()
+  const plugins = opencode?.plugin ?? []
+  const duplicates = plugins.filter((entry) => entry.includes("oh-my-opencode") || entry.includes("opencode-auto-batch"))
+  if (duplicates.length > 1) {
+    issues.push({
+      title: "Multiple auto-batch style plugins registered",
+      description: `OpenCode plugin list contains overlapping entries: ${duplicates.join(", ")}`,
+      severity: "warning",
+      affects: ["plugin loading", "routing consistency"],
+    })
+  }
+
+  if (opencode?.default_agent && opencode.default_agent !== "auto") {
+    issues.push({
+      title: "Default agent drifts from auto",
+      description: `OpenCode default_agent is set to '${opencode.default_agent}' instead of 'auto'.`,
+      severity: "warning",
+      affects: ["routing", "batch execution"],
+    })
   }
 
   return {
