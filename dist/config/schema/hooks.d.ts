@@ -3,7 +3,6 @@ export declare const HookNameSchema: z.ZodEnum<{
     atlas: "atlas";
     "ralph-loop": "ralph-loop";
     "start-work": "start-work";
-    "gpt-permission-continuation": "gpt-permission-continuation";
     "todo-continuation-enforcer": "todo-continuation-enforcer";
     "context-window-monitor": "context-window-monitor";
     "session-recovery": "session-recovery";

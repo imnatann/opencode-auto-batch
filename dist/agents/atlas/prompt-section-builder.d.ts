@@ -11,3 +11,4 @@ export declare function buildAgentSelectionSection(agents: AvailableAgent[]): st
 export declare function buildCategorySection(userCategories?: Record<string, CategoryConfig>): string;
 export declare function buildSkillsSection(skills: AvailableSkill[]): string;
 export declare function buildDecisionMatrix(agents: AvailableAgent[], userCategories?: Record<string, CategoryConfig>): string;
+export declare function buildOwnershipPlannerSection(): string;

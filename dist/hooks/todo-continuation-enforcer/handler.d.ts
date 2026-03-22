@@ -7,7 +7,6 @@ export declare function createTodoContinuationHandler(args: {
     backgroundManager?: BackgroundManager;
     skipAgents?: string[];
     isContinuationStopped?: (sessionID: string) => boolean;
-    shouldSkipContinuation?: (sessionID: string) => boolean;
 }): (input: {
     event: {
         type: string;

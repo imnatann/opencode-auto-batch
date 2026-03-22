@@ -8,5 +8,4 @@ export declare function handleSessionIdle(args: {
     backgroundManager?: BackgroundManager;
     skipAgents?: string[];
     isContinuationStopped?: (sessionID: string) => boolean;
-    shouldSkipContinuation?: (sessionID: string) => boolean;
 }): Promise<void>;

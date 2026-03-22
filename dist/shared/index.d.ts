@@ -37,6 +37,7 @@ export type { ModelResolutionRequest, ModelResolutionProvenance, ModelResolution
 export * from "./model-availability";
 export * from "./fallback-model-availability";
 export * from "./connected-providers-cache";
+export * from "./provider-model-id-transform";
 export * from "./context-limit-resolver";
 export * from "./session-utils";
 export * from "./tmux";

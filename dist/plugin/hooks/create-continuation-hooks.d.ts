@@ -1,10 +1,9 @@
 import type { HookName, OhMyOpenCodeConfig } from "../../config";
 import type { BackgroundManager } from "../../features/background-agent";
 import type { PluginContext } from "../types";
-import { createGptPermissionContinuationHook, createTodoContinuationEnforcer, createBackgroundNotificationHook, createStopContinuationGuardHook, createCompactionContextInjector, createCompactionTodoPreserverHook, createAtlasHook } from "../../hooks";
+import { createTodoContinuationEnforcer, createBackgroundNotificationHook, createStopContinuationGuardHook, createCompactionContextInjector, createCompactionTodoPreserverHook, createAtlasHook } from "../../hooks";
 import { createUnstableAgentBabysitter } from "../unstable-agent-babysitter";
 export type ContinuationHooks = {
-    gptPermissionContinuation: ReturnType<typeof createGptPermissionContinuationHook> | null;
     stopContinuationGuard: ReturnType<typeof createStopContinuationGuardHook> | null;
     compactionContextInjector: ReturnType<typeof createCompactionContextInjector> | null;
     compactionTodoPreserver: ReturnType<typeof createCompactionTodoPreserverHook> | null;

@@ -5,7 +5,7 @@ export declare const TERMINAL_TASK_TTL_MS: number;
 export declare const MIN_STABILITY_TIME_MS: number;
 export declare const DEFAULT_STALE_TIMEOUT_MS = 1200000;
 export declare const DEFAULT_MESSAGE_STALENESS_TIMEOUT_MS = 1800000;
-export declare const DEFAULT_MAX_TOOL_CALLS = 200;
+export declare const DEFAULT_MAX_TOOL_CALLS = 4000;
 export declare const DEFAULT_CIRCUIT_BREAKER_CONSECUTIVE_THRESHOLD = 20;
 export declare const DEFAULT_CIRCUIT_BREAKER_ENABLED = true;
 export declare const MIN_RUNTIME_BEFORE_STALE_MS = 30000;

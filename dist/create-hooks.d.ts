@@ -27,7 +27,6 @@ export declare function createHooks(args: {
     disposeHooks: () => void;
     categorySkillReminder: ReturnType<typeof import("./hooks").createCategorySkillReminderHook> | null;
     autoSlashCommand: ReturnType<typeof import("./hooks").createAutoSlashCommandHook> | null;
-    gptPermissionContinuation: ReturnType<typeof import("./hooks").createGptPermissionContinuationHook> | null;
     stopContinuationGuard: ReturnType<typeof import("./hooks").createStopContinuationGuardHook> | null;
     compactionContextInjector: ReturnType<typeof import("./hooks").createCompactionContextInjector> | null;
     compactionTodoPreserver: ReturnType<typeof import("./hooks").createCompactionTodoPreserverHook> | null;

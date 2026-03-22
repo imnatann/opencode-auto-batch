@@ -18,6 +18,7 @@ export declare const CHECK_IDS: {
     readonly CONFIG: "config";
     readonly TOOLS: "tools";
     readonly MODELS: "models";
+    readonly PROVIDERS: "providers";
 };
 export declare const CHECK_NAMES: Record<string, string>;
 export declare const EXIT_CODES: {
@@ -25,5 +26,5 @@ export declare const EXIT_CODES: {
     readonly FAILURE: 1;
 };
 export declare const MIN_OPENCODE_VERSION = "1.0.150";
-export declare const PACKAGE_NAME = "oh-my-opencode";
+export declare const PACKAGE_NAME = "opencode-auto-batch";
 export declare const OPENCODE_BINARIES: readonly ["opencode", "opencode-desktop"];

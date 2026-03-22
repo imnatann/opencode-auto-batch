@@ -9,6 +9,8 @@ export declare function injectBoulderContinuation(input: {
     total: number;
     agent?: string;
     worktreePath?: string;
+    preferredTaskSessionId?: string;
+    preferredTaskTitle?: string;
     backgroundManager?: BackgroundManager;
     sessionState: SessionState;
 }): Promise<void>;

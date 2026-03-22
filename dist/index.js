@@ -4997,9 +4997,9 @@ Approach:
 </Category_Context>
 
 <Caller_Warning>
-THIS CATEGORY USES A LESS CAPABLE MODEL (claude-haiku-4-5).
+THIS CATEGORY USES A SMALLER/FASTER MODEL (gpt-5.4-mini).
 
-The model executing this task has LIMITED reasoning capacity. Your prompt MUST be:
+The model executing this task is optimized for speed over depth. Your prompt MUST be:
 
 **EXHAUSTIVELY EXPLICIT** - Leave NOTHING to interpretation:
 1. MUST DO: List every required action as atomic, numbered steps
@@ -5007,10 +5007,9 @@ The model executing this task has LIMITED reasoning capacity. Your prompt MUST b
 3. EXPECTED OUTPUT: Describe exact success criteria with concrete examples
 
 **WHY THIS MATTERS:**
-- Less capable models WILL deviate without explicit guardrails
-- Vague instructions \u2192 unpredictable results
-- Implicit expectations \u2192 missed requirements
-
+- Smaller models benefit from explicit guardrails
+- Vague instructions may lead to unpredictable results
+- Implicit expectations may be missed
 **PROMPT STRUCTURE (MANDATORY):**
 \`\`\`
 TASK: [One-sentence goal]
@@ -5368,7 +5367,7 @@ var init_constants = __esm(() => {
     ultrabrain: { model: "openai/gpt-5.4", variant: "xhigh" },
     deep: { model: "openai/gpt-5.3-codex", variant: "medium" },
     artistry: { model: "google/gemini-3.1-pro", variant: "high" },
-    quick: { model: "anthropic/claude-haiku-4-5" },
+    quick: { model: "openai/gpt-5.4-mini" },
     "unspecified-low": { model: "anthropic/claude-sonnet-4-6" },
     "unspecified-high": { model: "anthropic/claude-opus-4-6", variant: "max" },
     writing: { model: "kimi-for-coding/k2p5" }
@@ -16573,7 +16572,8 @@ var HOOK_NAME_MAP = {
   "sisyphus-orchestrator": "atlas",
   "sisyphus-gpt-hephaestus-reminder": "no-sisyphus-gpt",
   "empty-message-sanitizer": null,
-  "delegate-task-english-directive": null
+  "delegate-task-english-directive": null,
+  "gpt-permission-continuation": null
 };
 function migrateHookNames(hooks) {
   const migrated = [];
@@ -17366,6 +17366,10 @@ var CATEGORY_MODEL_REQUIREMENTS = {
   },
   quick: {
     fallbackChain: [
+      {
+        providers: ["openai", "github-copilot", "opencode"],
+        model: "gpt-5.4-mini"
+      },
       {
         providers: ["anthropic", "github-copilot", "opencode"],
         model: "claude-haiku-4-5"
@@ -20049,7 +20053,8 @@ Incomplete tasks remain in your todo list. Continue working on the next pending 
 
 - Proceed without asking for permission
 - Mark each task complete when finished
-- Do not stop until all tasks are done`;
+- Do not stop until all tasks are done
+- If you believe all work is already complete, the system is questioning your completion claim. Critically re-examine each todo item from a skeptical perspective, verify the work was actually done correctly, and update the todo list accordingly.`;
 var COUNTDOWN_SECONDS = 2;
 var TOAST_DURATION_MS = 900;
 var COUNTDOWN_GRACE_PERIOD_MS = 500;
@@ -20432,8 +20437,7 @@ async function handleSessionIdle(args) {
     sessionStateStore,
     backgroundManager,
     skipAgents = DEFAULT_SKIP_AGENTS,
-    isContinuationStopped,
-    shouldSkipContinuation
+    isContinuationStopped
   } = args;
   log(`[${HOOK_NAME}] session.idle`, { sessionID });
   const state2 = sessionStateStore.getState(sessionID);
@@ -20541,10 +20545,6 @@ async function handleSessionIdle(args) {
     log(`[${HOOK_NAME}] Skipped: continuation stopped for session`, { sessionID });
     return;
   }
-  if (shouldSkipContinuation?.(sessionID)) {
-    log(`[${HOOK_NAME}] Skipped: another continuation hook already injected`, { sessionID });
-    return;
-  }
   const progressUpdate = sessionStateStore.trackContinuationProgress(sessionID, incompleteCount, todos);
   if (shouldStopForStagnation({ sessionID, incompleteCount, progressUpdate })) {
     return;
@@ -20634,8 +20634,7 @@ function createTodoContinuationHandler(args) {
     sessionStateStore,
     backgroundManager,
     skipAgents = DEFAULT_SKIP_AGENTS,
-    isContinuationStopped,
-    shouldSkipContinuation
+    isContinuationStopped
   } = args;
   return async ({ event }) => {
     const props = event.properties;
@@ -20663,8 +20662,7 @@ function createTodoContinuationHandler(args) {
         sessionStateStore,
         backgroundManager,
         skipAgents,
-        isContinuationStopped,
-        shouldSkipContinuation
+        isContinuationStopped
       });
       return;
     }
@@ -20879,8 +20877,7 @@ function createTodoContinuationEnforcer(ctx, options = {}) {
   const {
     backgroundManager,
     skipAgents = DEFAULT_SKIP_AGENTS,
-    isContinuationStopped,
-    shouldSkipContinuation
+    isContinuationStopped
   } = options;
   const sessionStateStore = createSessionStateStore();
   const markRecovering = (sessionID) => {
@@ -20901,8 +20898,7 @@ function createTodoContinuationEnforcer(ctx, options = {}) {
     sessionStateStore,
     backgroundManager,
     skipAgents,
-    isContinuationStopped,
-    shouldSkipContinuation
+    isContinuationStopped
   });
   const cancelAllCountdowns = () => {
     sessionStateStore.cancelAllCountdowns();
@@ -43634,6 +43630,8 @@ You already emitted <promise>{{INITIAL_PROMISE}}</promise>. This does NOT finish
 REQUIRED NOW:
 - Call Oracle using task(subagent_type="oracle", load_skills=[], run_in_background=false, ...)
 - Ask Oracle to verify whether the original task is actually complete
+- Include the original task in the Oracle request
+- Explicitly tell Oracle to review skeptically and critically, and to look for reasons the task may still be incomplete or wrong
 - The system will inspect the Oracle session directly for the verification result
 - If Oracle does not verify, continue fixing the task and do not consider it complete
 
@@ -43648,6 +43646,7 @@ REQUIRED NOW:
 - Oracle does not lie. Treat the verification result as ground truth
 - Do not claim completion early or argue with the failed verification
 - After fixing the remaining issues, request Oracle review again using task(subagent_type="oracle", load_skills=[], run_in_background=false, ...)
+- Include the original task in the Oracle request and tell Oracle to review skeptically and critically
 - Only when the work is ready for review again, output: <promise>{{PROMISE}}</promise>
 
 Original task:
@@ -43820,7 +43819,7 @@ async function detectCompletionInSessionMessages(ctx, options) {
         continue;
       let responseText = "";
       for (const part of assistant.parts) {
-        if (part.type !== "text")
+        if (part.type !== "text" && part.type !== "tool_result")
           continue;
         responseText += `${responseText ? `
 ` : ""}${part.text ?? ""}`;
@@ -44005,7 +44004,7 @@ function collectAssistantText(message) {
   }
   let text = "";
   for (const part of message.parts) {
-    if (part.type !== "text") {
+    if (part.type !== "text" && part.type !== "tool_result") {
       continue;
     }
     text += `${text ? `
@@ -44169,7 +44168,7 @@ function createRalphLoopEventHandler(ctx, options) {
           }
           return;
         }
-        const completionSessionID = verificationSessionID ?? (state3.verification_pending ? undefined : sessionID);
+        const completionSessionID = verificationSessionID ?? sessionID;
         const transcriptPath = completionSessionID ? options.getTranscriptPath(completionSessionID) : undefined;
         const completionViaTranscript = completionSessionID ? detectCompletionInTranscript(transcriptPath, state3.completion_promise, state3.started_at) : false;
         const completionViaApi = completionViaTranscript ? false : verificationSessionID ? await detectCompletionInSessionMessages(ctx, {
@@ -44178,7 +44177,13 @@ function createRalphLoopEventHandler(ctx, options) {
           apiTimeoutMs: options.apiTimeoutMs,
           directory: options.directory,
           sinceMessageIndex: undefined
-        }) : state3.verification_pending ? false : await detectCompletionInSessionMessages(ctx, {
+        }) : state3.verification_pending ? await detectCompletionInSessionMessages(ctx, {
+          sessionID,
+          promise: state3.completion_promise,
+          apiTimeoutMs: options.apiTimeoutMs,
+          directory: options.directory,
+          sinceMessageIndex: state3.message_count_at_start
+        }) : await detectCompletionInSessionMessages(ctx, {
           sessionID,
           promise: state3.completion_promise,
           apiTimeoutMs: options.apiTimeoutMs,
@@ -44414,245 +44419,6 @@ function createNoHephaestusNonGptHook(ctx, options) {
         }
         updateSessionAgent(input.sessionID, SISYPHUS_DISPLAY);
       }
-    }
-  };
-}
-// src/hooks/gpt-permission-continuation/handler.ts
-init_logger();
-
-// src/hooks/gpt-permission-continuation/assistant-message.ts
-function getLastAssistantMessage(messages) {
-  for (let index = messages.length - 1;index >= 0; index--) {
-    if (messages[index].info?.role === "assistant") {
-      return messages[index];
-    }
-  }
-  return null;
-}
-function extractAssistantText(message) {
-  return (message.parts ?? []).filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text?.trim() ?? "").filter(Boolean).join(`
-`);
-}
-function isGptAssistantMessage(message) {
-  const modelID = message.info?.model?.modelID ?? message.info?.modelID;
-  return typeof modelID === "string" && modelID.toLowerCase().includes("gpt");
-}
-
-// src/hooks/gpt-permission-continuation/constants.ts
-var HOOK_NAME4 = "gpt-permission-continuation";
-var CONTINUATION_PROMPT3 = "continue";
-var MAX_CONSECUTIVE_AUTO_CONTINUES = 3;
-var DEFAULT_STALL_PATTERNS = [
-  "if you want",
-  "would you like",
-  "shall i",
-  "do you want me to",
-  "let me know if"
-];
-
-// src/hooks/gpt-permission-continuation/detector.ts
-function getTrailingSegment(text) {
-  const normalized = text.trim().replace(/\s+/g, " ");
-  if (!normalized)
-    return "";
-  const sentenceParts = normalized.split(/(?<=[.!?])\s+/);
-  return sentenceParts[sentenceParts.length - 1]?.trim().toLowerCase() ?? "";
-}
-function detectStallPattern(text, patterns = DEFAULT_STALL_PATTERNS) {
-  if (!text.trim())
-    return false;
-  const tail = text.slice(-800);
-  const lines = tail.split(`
-`).map((line) => line.trim()).filter(Boolean);
-  const hotZone = lines.slice(-3).join(" ");
-  const trailingSegment = getTrailingSegment(hotZone);
-  return patterns.some((pattern) => trailingSegment.startsWith(pattern.toLowerCase()));
-}
-
-// src/hooks/gpt-permission-continuation/handler.ts
-async function promptContinuation(ctx, sessionID) {
-  const payload = {
-    path: { id: sessionID },
-    body: {
-      parts: [{ type: "text", text: CONTINUATION_PROMPT3 }]
-    },
-    query: { directory: ctx.directory }
-  };
-  if (typeof ctx.client.session.promptAsync === "function") {
-    await ctx.client.session.promptAsync(payload);
-    return;
-  }
-  await ctx.client.session.prompt(payload);
-}
-function getLastUserMessageBefore(messages, lastAssistantIndex) {
-  for (let index = lastAssistantIndex - 1;index >= 0; index--) {
-    if (messages[index].info?.role === "user") {
-      return messages[index];
-    }
-  }
-  return null;
-}
-function isAutoContinuationUserMessage(message) {
-  return extractAssistantText(message).trim().toLowerCase() === CONTINUATION_PROMPT3;
-}
-function extractPermissionPhrase(text) {
-  const tail = text.slice(-800);
-  const lines = tail.split(`
-`).map((line) => line.trim()).filter(Boolean);
-  const hotZone = lines.slice(-3).join(" ");
-  const sentenceParts = hotZone.trim().replace(/\s+/g, " ").split(/(?<=[.!?])\s+/);
-  const trailingSegment = sentenceParts[sentenceParts.length - 1]?.trim().toLowerCase() ?? "";
-  return trailingSegment || null;
-}
-function resetAutoContinuationState(state3) {
-  state3.consecutiveAutoContinueCount = 0;
-  state3.awaitingAutoContinuationResponse = false;
-  state3.lastAutoContinuePermissionPhrase = undefined;
-}
-function createGptPermissionContinuationHandler(args) {
-  const { ctx, sessionStateStore, isContinuationStopped } = args;
-  return async ({ event }) => {
-    const properties = event.properties;
-    if (event.type === "session.deleted") {
-      const sessionID2 = properties?.info?.id;
-      if (sessionID2) {
-        sessionStateStore.cleanup(sessionID2);
-      }
-      return;
-    }
-    if (event.type !== "session.idle")
-      return;
-    const sessionID = properties?.sessionID;
-    if (!sessionID)
-      return;
-    if (isContinuationStopped?.(sessionID)) {
-      log(`[${HOOK_NAME4}] Skipped: continuation stopped for session`, { sessionID });
-      return;
-    }
-    const state3 = sessionStateStore.getState(sessionID);
-    if (state3.inFlight) {
-      log(`[${HOOK_NAME4}] Skipped: prompt already in flight`, { sessionID });
-      return;
-    }
-    try {
-      const messagesResponse = await ctx.client.session.messages({
-        path: { id: sessionID },
-        query: { directory: ctx.directory }
-      });
-      const messages = normalizeSDKResponse(messagesResponse, [], {
-        preferResponseOnMissingData: true
-      });
-      const lastAssistantMessage = getLastAssistantMessage(messages);
-      if (!lastAssistantMessage)
-        return;
-      const lastAssistantIndex = messages.lastIndexOf(lastAssistantMessage);
-      const previousUserMessage = getLastUserMessageBefore(messages, lastAssistantIndex);
-      const previousUserMessageWasAutoContinuation = previousUserMessage !== null && state3.awaitingAutoContinuationResponse && isAutoContinuationUserMessage(previousUserMessage);
-      if (previousUserMessageWasAutoContinuation) {
-        state3.awaitingAutoContinuationResponse = false;
-      } else if (previousUserMessage) {
-        resetAutoContinuationState(state3);
-      } else {
-        state3.awaitingAutoContinuationResponse = false;
-      }
-      const messageID = lastAssistantMessage.info?.id;
-      if (messageID && state3.lastHandledMessageID === messageID) {
-        log(`[${HOOK_NAME4}] Skipped: already handled assistant message`, { sessionID, messageID });
-        return;
-      }
-      if (lastAssistantMessage.info?.error) {
-        log(`[${HOOK_NAME4}] Skipped: last assistant message has error`, { sessionID, messageID });
-        return;
-      }
-      if (!isGptAssistantMessage(lastAssistantMessage)) {
-        log(`[${HOOK_NAME4}] Skipped: last assistant model is not GPT`, { sessionID, messageID });
-        return;
-      }
-      const assistantText = extractAssistantText(lastAssistantMessage);
-      if (!detectStallPattern(assistantText)) {
-        return;
-      }
-      const permissionPhrase = extractPermissionPhrase(assistantText);
-      if (!permissionPhrase) {
-        return;
-      }
-      if (state3.consecutiveAutoContinueCount >= MAX_CONSECUTIVE_AUTO_CONTINUES) {
-        state3.lastHandledMessageID = messageID;
-        log(`[${HOOK_NAME4}] Skipped: reached max consecutive auto-continues`, {
-          sessionID,
-          messageID,
-          consecutiveAutoContinueCount: state3.consecutiveAutoContinueCount
-        });
-        return;
-      }
-      if (state3.consecutiveAutoContinueCount >= 1 && state3.lastAutoContinuePermissionPhrase === permissionPhrase) {
-        state3.lastHandledMessageID = messageID;
-        log(`[${HOOK_NAME4}] Skipped: repeated permission phrase after auto-continue`, {
-          sessionID,
-          messageID,
-          permissionPhrase
-        });
-        return;
-      }
-      state3.inFlight = true;
-      await promptContinuation(ctx, sessionID);
-      state3.lastHandledMessageID = messageID;
-      state3.consecutiveAutoContinueCount += 1;
-      state3.awaitingAutoContinuationResponse = true;
-      state3.lastAutoContinuePermissionPhrase = permissionPhrase;
-      state3.lastInjectedAt = Date.now();
-      log(`[${HOOK_NAME4}] Injected continuation prompt`, { sessionID, messageID });
-    } catch (error48) {
-      log(`[${HOOK_NAME4}] Failed to inject continuation prompt`, {
-        sessionID,
-        error: String(error48)
-      });
-    } finally {
-      state3.inFlight = false;
-    }
-  };
-}
-
-// src/hooks/gpt-permission-continuation/session-state.ts
-function createSessionStateStore2() {
-  const states = new Map;
-  const getState = (sessionID) => {
-    const existing = states.get(sessionID);
-    if (existing)
-      return existing;
-    const created = {
-      inFlight: false,
-      consecutiveAutoContinueCount: 0,
-      awaitingAutoContinuationResponse: false
-    };
-    states.set(sessionID, created);
-    return created;
-  };
-  return {
-    getState,
-    wasRecentlyInjected(sessionID, windowMs) {
-      const state3 = states.get(sessionID);
-      if (!state3?.lastInjectedAt)
-        return false;
-      return Date.now() - state3.lastInjectedAt <= windowMs;
-    },
-    cleanup(sessionID) {
-      states.delete(sessionID);
-    }
-  };
-}
-
-// src/hooks/gpt-permission-continuation/index.ts
-function createGptPermissionContinuationHook(ctx, options) {
-  const sessionStateStore = createSessionStateStore2();
-  return {
-    handler: createGptPermissionContinuationHandler({
-      ctx,
-      sessionStateStore,
-      isContinuationStopped: options?.isContinuationStopped
-    }),
-    wasRecentlyInjected(sessionID) {
-      return sessionStateStore.wasRecentlyInjected(sessionID, 5000);
     }
   };
 }
@@ -47727,7 +47493,6 @@ var GitMasterConfigSchema = exports_external.object({
 });
 // src/config/schema/hooks.ts
 var HookNameSchema = exports_external.enum([
-  "gpt-permission-continuation",
   "todo-continuation-enforcer",
   "context-window-monitor",
   "session-recovery",
@@ -47784,6 +47549,39 @@ var NotificationConfigSchema = exports_external.object({
 // src/mcp/types.ts
 var McpNameSchema = exports_external.enum(["websearch", "context7", "grep_app"]);
 var AnyMcpNameSchema = exports_external.string().min(1);
+
+// src/config/schema/openclaw.ts
+var OpenClawGatewaySchema = exports_external.object({
+  type: exports_external.enum(["http", "command"]).default("http"),
+  url: exports_external.string().optional(),
+  method: exports_external.string().default("POST"),
+  headers: exports_external.record(exports_external.string(), exports_external.string()).optional(),
+  command: exports_external.string().optional(),
+  timeout: exports_external.number().optional()
+});
+var OpenClawHookSchema = exports_external.object({
+  enabled: exports_external.boolean().default(true),
+  gateway: exports_external.string(),
+  instruction: exports_external.string()
+});
+var OpenClawReplyListenerConfigSchema = exports_external.object({
+  discordBotToken: exports_external.string().optional(),
+  discordChannelId: exports_external.string().optional(),
+  discordMention: exports_external.string().optional(),
+  authorizedDiscordUserIds: exports_external.array(exports_external.string()).default([]),
+  telegramBotToken: exports_external.string().optional(),
+  telegramChatId: exports_external.string().optional(),
+  pollIntervalMs: exports_external.number().default(3000),
+  rateLimitPerMinute: exports_external.number().default(10),
+  maxMessageLength: exports_external.number().default(500),
+  includePrefix: exports_external.boolean().default(true)
+});
+var OpenClawConfigSchema = exports_external.object({
+  enabled: exports_external.boolean().default(false),
+  gateways: exports_external.record(exports_external.string(), OpenClawGatewaySchema).default({}),
+  hooks: exports_external.record(exports_external.string(), OpenClawHookSchema).default({}),
+  replyListener: OpenClawReplyListenerConfigSchema.optional()
+});
 
 // src/config/schema/ralph-loop.ts
 var RalphLoopConfigSchema = exports_external.object({
@@ -47906,6 +47704,7 @@ var OhMyOpenCodeConfigSchema = exports_external.object({
   runtime_fallback: exports_external.union([exports_external.boolean(), RuntimeFallbackConfigSchema]).optional(),
   background_task: BackgroundTaskConfigSchema.optional(),
   notification: NotificationConfigSchema.optional(),
+  openclaw: OpenClawConfigSchema.optional(),
   babysitting: BabysittingConfigSchema.optional(),
   git_master: GitMasterConfigSchema.optional(),
   browser_automation_engine: BrowserAutomationConfigSchema.optional(),
@@ -50010,7 +49809,7 @@ ${EDIT_ERROR_REMINDER}`;
   };
 }
 // src/hooks/prometheus-md-only/constants.ts
-var HOOK_NAME5 = "prometheus-md-only";
+var HOOK_NAME4 = "prometheus-md-only";
 var PROMETHEUS_AGENT = "prometheus";
 var ALLOWED_EXTENSIONS = [".md"];
 var BLOCKED_TOOLS = ["Write", "Edit", "write", "edit"];
@@ -50090,6 +49889,7 @@ var PROMETHEUS_PLANS_DIR = ".sisyphus/plans";
 // src/features/boulder-state/storage.ts
 import { existsSync as existsSync55, readFileSync as readFileSync40, writeFileSync as writeFileSync17, mkdirSync as mkdirSync13, readdirSync as readdirSync16 } from "fs";
 import { dirname as dirname15, join as join64, basename as basename6 } from "path";
+var RESERVED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 function getBoulderFilePath(directory) {
   return join64(directory, BOULDER_DIR, BOULDER_FILE);
 }
@@ -50106,6 +49906,9 @@ function readBoulderState(directory) {
     }
     if (!Array.isArray(parsed.session_ids)) {
       parsed.session_ids = [];
+    }
+    if (!parsed.task_sessions || typeof parsed.task_sessions !== "object" || Array.isArray(parsed.task_sessions)) {
+      parsed.task_sessions = {};
     }
     return parsed;
   } catch {
@@ -50155,6 +49958,37 @@ function clearBoulderState(directory) {
     return false;
   }
 }
+function getTaskSessionState(directory, taskKey) {
+  const state3 = readBoulderState(directory);
+  if (!state3?.task_sessions) {
+    return null;
+  }
+  return state3.task_sessions[taskKey] ?? null;
+}
+function upsertTaskSessionState(directory, input) {
+  const state3 = readBoulderState(directory);
+  if (!state3) {
+    return null;
+  }
+  if (RESERVED_KEYS.has(input.taskKey)) {
+    return null;
+  }
+  const taskSessions = state3.task_sessions ?? {};
+  taskSessions[input.taskKey] = {
+    task_key: input.taskKey,
+    task_label: input.taskLabel,
+    task_title: input.taskTitle,
+    session_id: input.sessionId,
+    ...input.agent !== undefined ? { agent: input.agent } : {},
+    ...input.category !== undefined ? { category: input.category } : {},
+    updated_at: new Date().toISOString()
+  };
+  state3.task_sessions = taskSessions;
+  if (writeBoulderState(directory, state3)) {
+    return state3;
+  }
+  return null;
+}
 function findPrometheusPlans(directory) {
   const plansDir = join64(directory, PROMETHEUS_PLANS_DIR);
   if (!existsSync55(plansDir)) {
@@ -50202,6 +50036,61 @@ function createBoulderState(planPath, sessionId, agent, worktreePath) {
     ...agent !== undefined ? { agent } : {},
     ...worktreePath !== undefined ? { worktree_path: worktreePath } : {}
   };
+}
+// src/features/boulder-state/top-level-task.ts
+import { existsSync as existsSync56, readFileSync as readFileSync41 } from "fs";
+var TODO_HEADING_PATTERN = /^##\s+TODOs\b/i;
+var FINAL_VERIFICATION_HEADING_PATTERN = /^##\s+Final Verification Wave\b/i;
+var SECOND_LEVEL_HEADING_PATTERN = /^##\s+/;
+var UNCHECKED_CHECKBOX_PATTERN = /^(\s*)[-*]\s*\[\s*\]\s*(.+)$/;
+var TODO_TASK_PATTERN = /^(\d+)\.\s+(.+)$/;
+var FINAL_WAVE_TASK_PATTERN = /^(F\d+)\.\s+(.+)$/i;
+function buildTaskRef(section, taskLabel) {
+  const pattern = section === "todo" ? TODO_TASK_PATTERN : FINAL_WAVE_TASK_PATTERN;
+  const match = taskLabel.match(pattern);
+  if (!match) {
+    return null;
+  }
+  const rawLabel = match[1];
+  const title = match[2].trim();
+  return {
+    key: `${section}:${rawLabel.toLowerCase()}`,
+    section,
+    label: rawLabel,
+    title
+  };
+}
+function readCurrentTopLevelTask(planPath) {
+  if (!existsSync56(planPath)) {
+    return null;
+  }
+  try {
+    const content = readFileSync41(planPath, "utf-8");
+    const lines = content.split(/\r?\n/);
+    let section = "other";
+    for (const line of lines) {
+      if (SECOND_LEVEL_HEADING_PATTERN.test(line)) {
+        section = TODO_HEADING_PATTERN.test(line) ? "todo" : FINAL_VERIFICATION_HEADING_PATTERN.test(line) ? "final-wave" : "other";
+      }
+      const uncheckedTaskMatch = line.match(UNCHECKED_CHECKBOX_PATTERN);
+      if (!uncheckedTaskMatch) {
+        continue;
+      }
+      if (uncheckedTaskMatch[1].length > 0) {
+        continue;
+      }
+      if (section !== "todo" && section !== "final-wave") {
+        continue;
+      }
+      const taskRef = buildTaskRef(section, uncheckedTaskMatch[2].trim());
+      if (taskRef) {
+        return taskRef;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 // src/hooks/prometheus-md-only/agent-resolution.ts
 function isCompactionAgent(agent) {
@@ -50276,7 +50165,7 @@ function createPrometheusMdOnlyHook(ctx) {
         const prompt = output.args.prompt;
         if (prompt && !prompt.includes(SYSTEM_DIRECTIVE_PREFIX)) {
           output.args.prompt = PLANNING_CONSULT_WARNING + prompt;
-          log(`[${HOOK_NAME5}] Injected read-only planning warning to ${toolName}`, {
+          log(`[${HOOK_NAME4}] Injected read-only planning warning to ${toolName}`, {
             sessionID: input.sessionID,
             tool: toolName,
             agent: agentName
@@ -50292,17 +50181,17 @@ function createPrometheusMdOnlyHook(ctx) {
         return;
       }
       if (!isAllowedFile(filePath, ctx.directory)) {
-        log(`[${HOOK_NAME5}] Blocked: Prometheus can only write to .sisyphus/*.md`, {
+        log(`[${HOOK_NAME4}] Blocked: Prometheus can only write to .sisyphus/*.md`, {
           sessionID: input.sessionID,
           tool: toolName,
           filePath,
           agent: agentName
         });
-        throw new Error(`[${HOOK_NAME5}] ${getAgentDisplayName("prometheus")} can only write/edit .md files inside .sisyphus/ directory. ` + `Attempted to modify: ${filePath}. ` + `${getAgentDisplayName("prometheus")} is a READ-ONLY planner. Use /start-work to execute the plan. ` + `APOLOGIZE TO THE USER, REMIND OF YOUR PLAN WRITING PROCESSES, TELL USER WHAT YOU WILL GOING TO DO AS THE PROCESS, WRITE THE PLAN`);
+        throw new Error(`[${HOOK_NAME4}] ${getAgentDisplayName("prometheus")} can only write/edit .md files inside .sisyphus/ directory. ` + `Attempted to modify: ${filePath}. ` + `${getAgentDisplayName("prometheus")} is a READ-ONLY planner. Use /start-work to execute the plan. ` + `APOLOGIZE TO THE USER, REMIND OF YOUR PLAN WRITING PROCESSES, TELL USER WHAT YOU WILL GOING TO DO AS THE PROCESS, WRITE THE PLAN`);
       }
       const normalizedPath = filePath.toLowerCase().replace(/\\/g, "/");
       if (normalizedPath.includes(".sisyphus/plans/") || normalizedPath.includes(".sisyphus\\plans\\")) {
-        log(`[${HOOK_NAME5}] Injecting workflow reminder for plan write`, {
+        log(`[${HOOK_NAME4}] Injecting workflow reminder for plan write`, {
           sessionID: input.sessionID,
           tool: toolName,
           filePath,
@@ -50310,7 +50199,7 @@ function createPrometheusMdOnlyHook(ctx) {
         });
         output.message = (output.message || "") + PROMETHEUS_WORKFLOW_REMINDER;
       }
-      log(`[${HOOK_NAME5}] Allowed: .sisyphus/*.md write permitted`, {
+      log(`[${HOOK_NAME4}] Allowed: .sisyphus/*.md write permitted`, {
         sessionID: input.sessionID,
         tool: toolName,
         filePath,
@@ -50320,7 +50209,7 @@ function createPrometheusMdOnlyHook(ctx) {
   };
 }
 // src/hooks/sisyphus-junior-notepad/constants.ts
-var HOOK_NAME6 = "sisyphus-junior-notepad";
+var HOOK_NAME5 = "sisyphus-junior-notepad";
 var NOTEPAD_DIRECTIVE = `
 <Work_Context>
 ## Notepad Location (for recording learnings)
@@ -50367,7 +50256,7 @@ function createSisyphusJuniorNotepadHook(ctx) {
         return;
       }
       output.args.prompt = NOTEPAD_DIRECTIVE + prompt;
-      log(`[${HOOK_NAME6}] Injected notepad directive to task`, {
+      log(`[${HOOK_NAME5}] Injected notepad directive to task`, {
         sessionID: input.sessionID
       });
     }
@@ -50452,7 +50341,7 @@ function parseUserRequest(promptText) {
 }
 
 // src/hooks/start-work/start-work-hook.ts
-var HOOK_NAME7 = "start-work";
+var HOOK_NAME6 = "start-work";
 function findPlanByName(plans, requestedName) {
   const lowerName = requestedName.toLowerCase();
   const exactMatch = plans.find((p) => getPlanName(p).toLowerCase() === lowerName);
@@ -50494,7 +50383,7 @@ function createStartWorkHook(ctx) {
 `).trim() || "";
       if (!promptText.includes("<session-context>"))
         return;
-      log(`[${HOOK_NAME7}] Processing start-work command`, { sessionID: input.sessionID });
+      log(`[${HOOK_NAME6}] Processing start-work command`, { sessionID: input.sessionID });
       updateSessionAgent(input.sessionID, "atlas");
       const existingState = readBoulderState(ctx.directory);
       const sessionId = input.sessionID;
@@ -50503,7 +50392,7 @@ function createStartWorkHook(ctx) {
       const { worktreePath, block: worktreeBlock } = resolveWorktreeContext(explicitWorktreePath);
       let contextInfo = "";
       if (explicitPlanName) {
-        log(`[${HOOK_NAME7}] Explicit plan name requested: ${explicitPlanName}`, { sessionID: input.sessionID });
+        log(`[${HOOK_NAME6}] Explicit plan name requested: ${explicitPlanName}`, { sessionID: input.sessionID });
         const allPlans = findPrometheusPlans(ctx.directory);
         const matchedPlan = findPlanByName(allPlans, explicitPlanName);
         if (matchedPlan) {
@@ -50654,7 +50543,7 @@ ${worktreeBlock}
 ---
 ${contextInfo}`;
       }
-      log(`[${HOOK_NAME7}] Context injected`, {
+      log(`[${HOOK_NAME6}] Context injected`, {
         sessionID: input.sessionID,
         hasExistingState: !!existingState,
         worktreePath
@@ -50663,7 +50552,7 @@ ${contextInfo}`;
   };
 }
 // src/hooks/atlas/hook-name.ts
-var HOOK_NAME8 = "atlas";
+var HOOK_NAME7 = "atlas";
 // src/hooks/atlas/event-handler.ts
 init_logger();
 
@@ -50912,22 +50801,27 @@ async function injectBoulderContinuation(input) {
     total,
     agent,
     worktreePath,
+    preferredTaskSessionId,
+    preferredTaskTitle,
     backgroundManager,
     sessionState
   } = input;
   const hasRunningBgTasks = backgroundManager ? backgroundManager.getTasksByParentSession(sessionID).some((t) => t.status === "running") : false;
   if (hasRunningBgTasks) {
-    log(`[${HOOK_NAME8}] Skipped injection: background tasks running`, { sessionID });
+    log(`[${HOOK_NAME7}] Skipped injection: background tasks running`, { sessionID });
     return;
   }
   const worktreeContext = worktreePath ? `
 
 [Worktree: ${worktreePath}]` : "";
+  const preferredSessionContext = preferredTaskSessionId ? `
+
+[Preferred reuse session for current top-level plan task${preferredTaskTitle ? `: ${preferredTaskTitle}` : ""}: ${preferredTaskSessionId}]` : "";
   const prompt = BOULDER_CONTINUATION_PROMPT.replace(/{PLAN_NAME}/g, planName) + `
 
-[Status: ${total - remaining}/${total} completed, ${remaining} remaining]` + worktreeContext;
+[Status: ${total - remaining}/${total} completed, ${remaining} remaining]` + preferredSessionContext + worktreeContext;
   try {
-    log(`[${HOOK_NAME8}] Injecting boulder continuation`, { sessionID, planName, remaining });
+    log(`[${HOOK_NAME7}] Injecting boulder continuation`, { sessionID, planName, remaining });
     const promptContext = await resolveRecentPromptContextForSession(ctx, sessionID);
     const inheritedTools = resolveInheritedPromptTools(sessionID, promptContext.tools);
     await ctx.client.session.promptAsync({
@@ -50941,11 +50835,11 @@ async function injectBoulderContinuation(input) {
       query: { directory: ctx.directory }
     });
     sessionState.promptFailureCount = 0;
-    log(`[${HOOK_NAME8}] Boulder continuation injected`, { sessionID });
+    log(`[${HOOK_NAME7}] Boulder continuation injected`, { sessionID });
   } catch (err) {
     sessionState.promptFailureCount += 1;
     sessionState.lastFailureAt = Date.now();
-    log(`[${HOOK_NAME8}] Boulder continuation failed`, {
+    log(`[${HOOK_NAME7}] Boulder continuation failed`, {
       sessionID,
       error: String(err),
       promptFailureCount: sessionState.promptFailureCount
@@ -50961,7 +50855,7 @@ async function isSessionInBoulderLineage(input) {
   while (!visitedSessionIDs.has(currentSessionID)) {
     visitedSessionIDs.add(currentSessionID);
     const sessionResult = await input.client.session.get({ path: { id: currentSessionID } }).catch((error48) => {
-      log(`[${HOOK_NAME8}] Failed to resolve session lineage`, {
+      log(`[${HOOK_NAME7}] Failed to resolve session lineage`, {
         sessionID: input.sessionID,
         currentSessionID,
         error: error48
@@ -51021,6 +50915,7 @@ async function resolveActiveBoulderSession(input) {
 // src/hooks/atlas/idle-event.ts
 var CONTINUATION_COOLDOWN_MS2 = 5000;
 var FAILURE_BACKOFF_MS = 5 * 60 * 1000;
+var MAX_CONSECUTIVE_PROMPT_FAILURES = 10;
 var RETRY_DELAY_MS = CONTINUATION_COOLDOWN_MS2 + 1000;
 function hasRunningBackgroundTasks(sessionID, options) {
   const backgroundManager = options?.backgroundManager;
@@ -51030,6 +50925,9 @@ async function injectContinuation2(input) {
   const remaining = input.progress.total - input.progress.completed;
   input.sessionState.lastContinuationInjectedAt = Date.now();
   try {
+    const currentBoulder = readBoulderState(input.ctx.directory);
+    const currentTask = currentBoulder ? readCurrentTopLevelTask(currentBoulder.active_plan) : null;
+    const preferredTaskSession = currentTask ? getTaskSessionState(input.ctx.directory, currentTask.key) : null;
     await injectBoulderContinuation({
       ctx: input.ctx,
       sessionID: input.sessionID,
@@ -51038,11 +50936,13 @@ async function injectContinuation2(input) {
       total: input.progress.total,
       agent: input.agent,
       worktreePath: input.worktreePath,
+      preferredTaskSessionId: preferredTaskSession?.session_id,
+      preferredTaskTitle: preferredTaskSession?.task_title,
       backgroundManager: input.options?.backgroundManager,
       sessionState: input.sessionState
     });
   } catch (error48) {
-    log(`[${HOOK_NAME8}] Failed to inject boulder continuation`, { sessionID: input.sessionID, error: error48 });
+    log(`[${HOOK_NAME7}] Failed to inject boulder continuation`, { sessionID: input.sessionID, error: error48 });
     input.sessionState.promptFailureCount += 1;
   }
 }
@@ -51053,7 +50953,7 @@ function scheduleRetry(input) {
   }
   sessionState.pendingRetryTimer = setTimeout(async () => {
     sessionState.pendingRetryTimer = undefined;
-    if (sessionState.promptFailureCount >= 2)
+    if (sessionState.promptFailureCount >= MAX_CONSECUTIVE_PROMPT_FAILURES)
       return;
     if (sessionState.waitingForFinalWaveApproval)
       return;
@@ -51066,8 +50966,6 @@ function scheduleRetry(input) {
     if (currentProgress.isComplete)
       return;
     if (options?.isContinuationStopped?.(sessionID))
-      return;
-    if (options?.shouldSkipContinuation?.(sessionID))
       return;
     if (hasRunningBackgroundTasks(sessionID, options))
       return;
@@ -51085,23 +50983,23 @@ function scheduleRetry(input) {
 }
 async function handleAtlasSessionIdle(input) {
   const { ctx, options, getState, sessionID } = input;
-  log(`[${HOOK_NAME8}] session.idle`, { sessionID });
+  log(`[${HOOK_NAME7}] session.idle`, { sessionID });
   const activeBoulderSession = await resolveActiveBoulderSession({
     client: ctx.client,
     directory: ctx.directory,
     sessionID
   });
   if (!activeBoulderSession) {
-    log(`[${HOOK_NAME8}] Skipped: session not registered in active boulder`, { sessionID });
+    log(`[${HOOK_NAME7}] Skipped: session not registered in active boulder`, { sessionID });
     return;
   }
   const { boulderState, progress, appendedSession } = activeBoulderSession;
   if (progress.isComplete) {
-    log(`[${HOOK_NAME8}] Boulder complete`, { sessionID, plan: boulderState.plan_name });
+    log(`[${HOOK_NAME7}] Boulder complete`, { sessionID, plan: boulderState.plan_name });
     return;
   }
   if (appendedSession) {
-    log(`[${HOOK_NAME8}] Appended subagent session to boulder during idle`, {
+    log(`[${HOOK_NAME7}] Appended subagent session to boulder during idle`, {
       sessionID,
       plan: boulderState.plan_name
     });
@@ -51109,18 +51007,18 @@ async function handleAtlasSessionIdle(input) {
   const sessionState = getState(sessionID);
   const now = Date.now();
   if (sessionState.waitingForFinalWaveApproval) {
-    log(`[${HOOK_NAME8}] Skipped: waiting for explicit final-wave approval`, { sessionID });
+    log(`[${HOOK_NAME7}] Skipped: waiting for explicit final-wave approval`, { sessionID });
     return;
   }
   if (sessionState.lastEventWasAbortError) {
     sessionState.lastEventWasAbortError = false;
-    log(`[${HOOK_NAME8}] Skipped: abort error immediately before idle`, { sessionID });
+    log(`[${HOOK_NAME7}] Skipped: abort error immediately before idle`, { sessionID });
     return;
   }
-  if (sessionState.promptFailureCount >= 2) {
+  if (sessionState.promptFailureCount >= MAX_CONSECUTIVE_PROMPT_FAILURES) {
     const timeSinceLastFailure = sessionState.lastFailureAt !== undefined ? now - sessionState.lastFailureAt : Number.POSITIVE_INFINITY;
     if (timeSinceLastFailure < FAILURE_BACKOFF_MS) {
-      log(`[${HOOK_NAME8}] Skipped: continuation in backoff after repeated failures`, {
+      log(`[${HOOK_NAME7}] Skipped: continuation in backoff after repeated failures`, {
         sessionID,
         promptFailureCount: sessionState.promptFailureCount,
         backoffRemaining: FAILURE_BACKOFF_MS - timeSinceLastFailure
@@ -51131,20 +51029,16 @@ async function handleAtlasSessionIdle(input) {
     sessionState.lastFailureAt = undefined;
   }
   if (hasRunningBackgroundTasks(sessionID, options)) {
-    log(`[${HOOK_NAME8}] Skipped: background tasks running`, { sessionID });
+    log(`[${HOOK_NAME7}] Skipped: background tasks running`, { sessionID });
     return;
   }
   if (options?.isContinuationStopped?.(sessionID)) {
-    log(`[${HOOK_NAME8}] Skipped: continuation stopped for session`, { sessionID });
-    return;
-  }
-  if (options?.shouldSkipContinuation?.(sessionID)) {
-    log(`[${HOOK_NAME8}] Skipped: another continuation hook already injected`, { sessionID });
+    log(`[${HOOK_NAME7}] Skipped: continuation stopped for session`, { sessionID });
     return;
   }
   if (sessionState.lastContinuationInjectedAt && now - sessionState.lastContinuationInjectedAt < CONTINUATION_COOLDOWN_MS2) {
     scheduleRetry({ ctx, sessionID, sessionState, options });
-    log(`[${HOOK_NAME8}] Skipped: continuation cooldown active`, {
+    log(`[${HOOK_NAME7}] Skipped: continuation cooldown active`, {
       sessionID,
       cooldownRemaining: CONTINUATION_COOLDOWN_MS2 - (now - sessionState.lastContinuationInjectedAt),
       pendingRetry: !!sessionState.pendingRetryTimer
@@ -51175,7 +51069,7 @@ function createAtlasEventHandler(input) {
       const state3 = getState(sessionID);
       const isAbort = isAbortError(props?.error);
       state3.lastEventWasAbortError = isAbort;
-      log(`[${HOOK_NAME8}] session.error`, { sessionID, isAbort });
+      log(`[${HOOK_NAME7}] session.error`, { sessionID, isAbort });
       return;
     }
     if (event.type === "session.idle") {
@@ -51230,7 +51124,7 @@ function createAtlasEventHandler(input) {
           clearTimeout(deletedState.pendingRetryTimer);
         }
         sessions.delete(sessionInfo.id);
-        log(`[${HOOK_NAME8}] Session deleted: cleaned up`, { sessionID: sessionInfo.id });
+        log(`[${HOOK_NAME7}] Session deleted: cleaned up`, { sessionID: sessionInfo.id });
       }
       return;
     }
@@ -51242,7 +51136,7 @@ function createAtlasEventHandler(input) {
           clearTimeout(compactedState.pendingRetryTimer);
         }
         sessions.delete(sessionID);
-        log(`[${HOOK_NAME8}] Session compacted: cleaned up`, { sessionID });
+        log(`[${HOOK_NAME7}] Session compacted: cleaned up`, { sessionID });
       }
     }
   };
@@ -51252,36 +51146,36 @@ function createAtlasEventHandler(input) {
 init_logger();
 
 // src/hooks/atlas/final-wave-plan-state.ts
-import { existsSync as existsSync56, readFileSync as readFileSync41 } from "fs";
-var TODO_HEADING_PATTERN = /^##\s+TODOs\b/i;
-var FINAL_VERIFICATION_HEADING_PATTERN = /^##\s+Final Verification Wave\b/i;
-var SECOND_LEVEL_HEADING_PATTERN = /^##\s+/;
-var UNCHECKED_CHECKBOX_PATTERN = /^\s*[-*]\s*\[\s*\]\s*(.+)$/;
-var TODO_TASK_PATTERN = /^\d+\./;
-var FINAL_WAVE_TASK_PATTERN = /^F\d+\./i;
+import { existsSync as existsSync57, readFileSync as readFileSync42 } from "fs";
+var TODO_HEADING_PATTERN2 = /^##\s+TODOs\b/i;
+var FINAL_VERIFICATION_HEADING_PATTERN2 = /^##\s+Final Verification Wave\b/i;
+var SECOND_LEVEL_HEADING_PATTERN2 = /^##\s+/;
+var UNCHECKED_CHECKBOX_PATTERN2 = /^\s*[-*]\s*\[\s*\]\s*(.+)$/;
+var TODO_TASK_PATTERN2 = /^\d+\./;
+var FINAL_WAVE_TASK_PATTERN2 = /^F\d+\./i;
 function readFinalWavePlanState(planPath) {
-  if (!existsSync56(planPath)) {
+  if (!existsSync57(planPath)) {
     return null;
   }
   try {
-    const content = readFileSync41(planPath, "utf-8");
+    const content = readFileSync42(planPath, "utf-8");
     const lines = content.split(/\r?\n/);
     let section = "other";
     let pendingImplementationTaskCount = 0;
     let pendingFinalWaveTaskCount = 0;
     for (const line of lines) {
-      if (SECOND_LEVEL_HEADING_PATTERN.test(line)) {
-        section = TODO_HEADING_PATTERN.test(line) ? "todo" : FINAL_VERIFICATION_HEADING_PATTERN.test(line) ? "final-wave" : "other";
+      if (SECOND_LEVEL_HEADING_PATTERN2.test(line)) {
+        section = TODO_HEADING_PATTERN2.test(line) ? "todo" : FINAL_VERIFICATION_HEADING_PATTERN2.test(line) ? "final-wave" : "other";
       }
-      const uncheckedTaskMatch = line.match(UNCHECKED_CHECKBOX_PATTERN);
+      const uncheckedTaskMatch = line.match(UNCHECKED_CHECKBOX_PATTERN2);
       if (!uncheckedTaskMatch) {
         continue;
       }
       const taskLabel = uncheckedTaskMatch[1].trim();
-      if (section === "todo" && TODO_TASK_PATTERN.test(taskLabel)) {
+      if (section === "todo" && TODO_TASK_PATTERN2.test(taskLabel)) {
         pendingImplementationTaskCount += 1;
       }
-      if (section === "final-wave" && FINAL_WAVE_TASK_PATTERN.test(taskLabel)) {
+      if (section === "final-wave" && FINAL_WAVE_TASK_PATTERN2.test(taskLabel)) {
         pendingFinalWaveTaskCount += 1;
       }
     }
@@ -51334,12 +51228,120 @@ function isSisyphusPath(filePath) {
 }
 
 // src/hooks/atlas/subagent-session-id.ts
+init_logger();
 function extractSessionIdFromOutput(output) {
-  const match = output.match(/Session ID:\s*(ses_[a-zA-Z0-9]+)/);
-  return match?.[1] ?? "<session_id>";
+  const taskMetadataBlocks = [...output.matchAll(/<task_metadata>([\s\S]*?)<\/task_metadata>/gi)];
+  const lastTaskMetadataBlock = taskMetadataBlocks.at(-1)?.[1];
+  if (lastTaskMetadataBlock) {
+    const taskMetadataSessionMatch = lastTaskMetadataBlock.match(/session_id:\s*(ses_[a-zA-Z0-9_-]+)/i);
+    if (taskMetadataSessionMatch) {
+      return taskMetadataSessionMatch[1];
+    }
+  }
+  const explicitSessionMatches = [...output.matchAll(/Session ID:\s*(ses_[a-zA-Z0-9_-]+)/g)];
+  return explicitSessionMatches.at(-1)?.[1];
+}
+async function validateSubagentSessionId(input) {
+  if (!input.sessionID || input.lineageSessionIDs.length === 0) {
+    return;
+  }
+  const belongsToLineage = await isSessionInBoulderLineage({
+    client: input.client,
+    sessionID: input.sessionID,
+    boulderSessionIDs: input.lineageSessionIDs
+  });
+  if (!belongsToLineage) {
+    log(`[${HOOK_NAME7}] Ignoring extracted session id outside active lineage`, {
+      sessionID: input.sessionID,
+      lineageSessionIDs: input.lineageSessionIDs
+    });
+    return;
+  }
+  return input.sessionID;
+}
+
+// src/hooks/atlas/ownership-plan.ts
+import { existsSync as existsSync58, readFileSync as readFileSync43 } from "fs";
+function inspectOwnershipPlan(planPath) {
+  if (!existsSync58(planPath)) {
+    return {
+      exists: false,
+      hasSection: false,
+      hasBundles: false,
+      hasCollisionBoundaries: false,
+      hasSerialWaves: false,
+      hasDraftStarts: false,
+      bundleCount: 0
+    };
+  }
+  try {
+    const content = readFileSync43(planPath, "utf-8");
+    const bundleMatches = content.match(/\bO\d+\b/g) || [];
+    return {
+      exists: true,
+      hasSection: /^##\s+Ownership Plan/m.test(content) || /^OWNERSHIP PLAN:/m.test(content),
+      hasBundles: /\bBundles:\b/m.test(content),
+      hasCollisionBoundaries: /Collision Boundaries:/m.test(content),
+      hasSerialWaves: /Serial Waves:/m.test(content),
+      hasDraftStarts: /Draft-Start Tasks:/m.test(content),
+      bundleCount: new Set(bundleMatches).size
+    };
+  } catch {
+    return {
+      exists: true,
+      hasSection: false,
+      hasBundles: false,
+      hasCollisionBoundaries: false,
+      hasSerialWaves: false,
+      hasDraftStarts: false,
+      bundleCount: 0
+    };
+  }
+}
+function hasUsableOwnershipPlan(status) {
+  return status.hasSection && status.hasBundles && status.hasCollisionBoundaries && status.hasSerialWaves && status.bundleCount > 0;
+}
+function buildOwnershipPlanReminder(planName, status) {
+  const missing = [];
+  if (!status.hasSection)
+    missing.push("Ownership Plan section");
+  if (!status.hasBundles)
+    missing.push("Bundles");
+  if (!status.hasCollisionBoundaries)
+    missing.push("Collision Boundaries");
+  if (!status.hasSerialWaves)
+    missing.push("Serial Waves");
+  if (!status.hasDraftStarts)
+    missing.push("Draft-Start Tasks");
+  if (status.bundleCount === 0)
+    missing.push("bundle IDs like O1/O2");
+  return `
+**OWNERSHIP PLAN GATE**
+
+Before launching the next parallel write wave, verify ".sisyphus/plans/${planName}.md" contains a usable ownership plan.
+
+- Bundles detected: ${status.bundleCount}
+- Missing: ${missing.join(", ") || "none"}
+
+Minimum required structure:
+- \`## Ownership Plan\`
+- \`Bundles:\` with explicit ownership labels such as \`O1\`, \`O2\`
+- \`Collision Boundaries:\`
+- \`Serial Waves:\`
+- \`Draft-Start Tasks:\`
+
+If any of those are missing, update the plan before starting another parallel write wave.`;
 }
 
 // src/hooks/atlas/verification-reminders.ts
+function buildReuseHint(sessionId) {
+  return `
+**PREFERRED REUSE SESSION FOR THE CURRENT TOP-LEVEL PLAN TASK**
+
+- Reuse \`${sessionId}\` first if verification fails or the result needs follow-up.
+- Start a fresh subagent session only when reuse is unavailable or would cross task boundaries.
+`;
+}
 function buildCompletionGate(planName, sessionId) {
   return `
 **COMPLETION GATE \u2014 DO NOT PROCEED UNTIL THIS IS DONE**
@@ -51365,7 +51367,8 @@ task(session_id="${sessionId}", prompt="fix: checkbox not recorded correctly")
 
 **Your completion is NOT tracked until the checkbox is marked in the plan file.**
 
-**VERIFICATION_REMINDER**`;
+**VERIFICATION_REMINDER**
+${buildReuseHint(sessionId)}`;
 }
 function buildVerificationReminder(sessionId) {
   return `**VERIFICATION_REMINDER**
@@ -51377,7 +51380,9 @@ ${VERIFICATION_REMINDER}
 **If ANY verification fails, use this immediately:**
 \`\`\`
 task(session_id="${sessionId}", prompt="fix: [describe the specific failure]")
-\`\`\``;
+\`\`\`
+
+${buildReuseHint(sessionId)}`;
 }
 function buildOrchestratorReminder(planName, progress, sessionId, autoCommit = true, includeCompletionGate = true) {
   const remaining = progress.total - progress.completed;
@@ -51423,6 +51428,12 @@ Read(".sisyphus/plans/${planName}.md")
 \`\`\`
 Count exactly: how many \`- [ ]\` remain? How many \`- [x]\` completed?
 This is YOUR ground truth. Use it to decide what comes next.
+
+**STEP 6.5: VALIDATE OWNERSHIP PLAN BEFORE THE NEXT PARALLEL WRITE WAVE**
+
+- If the next work is parallel and write-capable, verify the plan contains an Ownership Plan section
+- Confirm bundles (\`O1\`, \`O2\`, ...), collision boundaries, serial waves, and draft-start tasks are explicit
+- If ownership is unclear, update the plan before launching the next parallel write wave
 
 ${commitStep}
 **STEP ${nextStepNumber}: PROCEED TO NEXT TASK**
@@ -51508,8 +51519,39 @@ function isWriteOrEditToolName(toolName) {
 }
 
 // src/hooks/atlas/tool-execute-after.ts
+function resolvePreferredSessionId(currentSessionId, trackedSessionId) {
+  return currentSessionId ?? trackedSessionId ?? "<session_id>";
+}
+function resolveTaskContext(pendingTaskRef, planPath) {
+  if (!pendingTaskRef) {
+    return {
+      currentTask: readCurrentTopLevelTask(planPath),
+      shouldSkipTaskSessionUpdate: false,
+      shouldIgnoreCurrentSessionId: false
+    };
+  }
+  if (pendingTaskRef.kind === "track") {
+    return {
+      currentTask: pendingTaskRef.task,
+      shouldSkipTaskSessionUpdate: false,
+      shouldIgnoreCurrentSessionId: false
+    };
+  }
+  if (pendingTaskRef.reason === "explicit_resume") {
+    return {
+      currentTask: readCurrentTopLevelTask(planPath),
+      shouldSkipTaskSessionUpdate: true,
+      shouldIgnoreCurrentSessionId: true
+    };
+  }
+  return {
+    currentTask: pendingTaskRef.task,
+    shouldSkipTaskSessionUpdate: true,
+    shouldIgnoreCurrentSessionId: true
+  };
+}
 function createToolExecuteAfterHandler2(input) {
-  const { ctx, pendingFilePaths, autoCommit, getState } = input;
+  const { ctx, pendingFilePaths, pendingTaskRefs, autoCommit, getState } = input;
   return async (toolInput, toolOutput) => {
     if (!toolOutput) {
       return;
@@ -51527,7 +51569,7 @@ function createToolExecuteAfterHandler2(input) {
       }
       if (filePath && !isSisyphusPath(filePath)) {
         toolOutput.output = (toolOutput.output || "") + DIRECT_WORK_REMINDER;
-        log(`[${HOOK_NAME8}] Direct work reminder appended`, {
+        log(`[${HOOK_NAME7}] Direct work reminder appended`, {
           sessionID: toolInput.sessionID,
           tool: toolInput.tool,
           filePath
@@ -51539,6 +51581,10 @@ function createToolExecuteAfterHandler2(input) {
       return;
     }
     const outputStr = toolOutput.output && typeof toolOutput.output === "string" ? toolOutput.output : "";
+    const pendingTaskRef = toolInput.callID ? pendingTaskRefs.get(toolInput.callID) : undefined;
+    if (toolInput.callID) {
+      pendingTaskRefs.delete(toolInput.callID);
+    }
     const isBackgroundLaunch = outputStr.includes("Background task launched") || outputStr.includes("Background task continued");
     if (isBackgroundLaunch) {
       return;
@@ -51546,18 +51592,41 @@ function createToolExecuteAfterHandler2(input) {
     if (toolOutput.output && typeof toolOutput.output === "string") {
       const gitStats = collectGitDiffStats(ctx.directory);
       const fileChanges = formatFileChanges(gitStats);
-      const subagentSessionId = extractSessionIdFromOutput(toolOutput.output);
+      const extractedSessionId = extractSessionIdFromOutput(toolOutput.output);
       const boulderState = readBoulderState(ctx.directory);
       if (boulderState) {
         const progress = getPlanProgress(boulderState.active_plan);
+        const {
+          currentTask,
+          shouldSkipTaskSessionUpdate,
+          shouldIgnoreCurrentSessionId
+        } = resolveTaskContext(pendingTaskRef, boulderState.active_plan);
+        const trackedTaskSession = currentTask ? getTaskSessionState(ctx.directory, currentTask.key) : null;
         const sessionState = toolInput.sessionID ? getState(toolInput.sessionID) : undefined;
         if (toolInput.sessionID && !boulderState.session_ids?.includes(toolInput.sessionID)) {
           appendSessionId(ctx.directory, toolInput.sessionID);
-          log(`[${HOOK_NAME8}] Appended session to boulder`, {
+          log(`[${HOOK_NAME7}] Appended session to boulder`, {
             sessionID: toolInput.sessionID,
             plan: boulderState.plan_name
           });
         }
+        const lineageSessionIDs = toolInput.sessionID && !boulderState.session_ids.includes(toolInput.sessionID) ? [...boulderState.session_ids, toolInput.sessionID] : boulderState.session_ids;
+        const subagentSessionId = await validateSubagentSessionId({
+          client: ctx.client,
+          sessionID: extractedSessionId,
+          lineageSessionIDs
+        });
+        if (currentTask && subagentSessionId && !shouldSkipTaskSessionUpdate) {
+          upsertTaskSessionState(ctx.directory, {
+            taskKey: currentTask.key,
+            taskLabel: currentTask.label,
+            taskTitle: currentTask.title,
+            sessionId: subagentSessionId,
+            agent: typeof toolOutput.metadata?.agent === "string" ? toolOutput.metadata.agent : undefined,
+            category: typeof toolOutput.metadata?.category === "string" ? toolOutput.metadata.category : undefined
+          });
+        }
+        const preferredSessionId = resolvePreferredSessionId(shouldIgnoreCurrentSessionId ? undefined : subagentSessionId, trackedTaskSession?.session_id);
         const originalResponse = toolOutput.output;
         const shouldPauseForApproval = sessionState ? shouldPauseForFinalWaveApproval({
           planPath: boulderState.active_plan,
@@ -51571,8 +51640,10 @@ function createToolExecuteAfterHandler2(input) {
             sessionState.pendingRetryTimer = undefined;
           }
         }
-        const leadReminder = shouldPauseForApproval ? buildFinalWaveApprovalReminder(boulderState.plan_name, progress, subagentSessionId) : buildCompletionGate(boulderState.plan_name, subagentSessionId);
-        const followupReminder = shouldPauseForApproval ? null : buildOrchestratorReminder(boulderState.plan_name, progress, subagentSessionId, autoCommit, false);
+        const leadReminder = shouldPauseForApproval ? buildFinalWaveApprovalReminder(boulderState.plan_name, progress, preferredSessionId) : buildCompletionGate(boulderState.plan_name, preferredSessionId);
+        const ownershipStatus = inspectOwnershipPlan(boulderState.active_plan);
+        const ownershipReminder = hasUsableOwnershipPlan(ownershipStatus) ? null : buildOwnershipPlanReminder(boulderState.plan_name, ownershipStatus);
+        const followupReminder = shouldPauseForApproval ? null : buildOrchestratorReminder(boulderState.plan_name, progress, preferredSessionId, autoCommit, false);
         toolOutput.output = `
 <system-reminder>
 ${leadReminder}
@@ -51590,19 +51661,31 @@ ${originalResponse}
 
 ${followupReminder === null ? "" : `<system-reminder>
 ${followupReminder}
-</system-reminder>`}`;
-        log(`[${HOOK_NAME8}] Output transformed for orchestrator mode (boulder)`, {
+</system-reminder>${ownershipReminder ? `
+
+<system-reminder>
+${ownershipReminder}
+</system-reminder>` : ""}`}`;
+        log(`[${HOOK_NAME7}] Output transformed for orchestrator mode (boulder)`, {
           plan: boulderState.plan_name,
           progress: `${progress.completed}/${progress.total}`,
           fileCount: gitStats.length,
+          preferredSessionId,
           waitingForFinalWaveApproval: shouldPauseForApproval
         });
       } else {
+        const lineageSessionIDs = toolInput.sessionID ? [toolInput.sessionID] : [];
+        const subagentSessionId = await validateSubagentSessionId({
+          client: ctx.client,
+          sessionID: extractedSessionId,
+          lineageSessionIDs
+        });
+        const preferredSessionId = pendingTaskRef?.kind === "skip" ? undefined : subagentSessionId;
         toolOutput.output += `
 <system-reminder>
-${buildStandaloneVerificationReminder(subagentSessionId)}
+${buildStandaloneVerificationReminder(resolvePreferredSessionId(preferredSessionId))}
 </system-reminder>`;
-        log(`[${HOOK_NAME8}] Verification reminder appended for orchestrator`, {
+        log(`[${HOOK_NAME7}] Verification reminder appended for orchestrator`, {
           sessionID: toolInput.sessionID,
           fileCount: gitStats.length
         });
@@ -51614,7 +51697,10 @@ ${buildStandaloneVerificationReminder(subagentSessionId)}
 // src/hooks/atlas/tool-execute-before.ts
 init_logger();
 function createToolExecuteBeforeHandler2(input) {
-  const { ctx, pendingFilePaths } = input;
+  const { ctx, pendingFilePaths, pendingTaskRefs } = input;
+  function trackTask(callID, task) {
+    pendingTaskRefs.set(callID, { kind: "track", task });
+  }
   return async (toolInput, toolOutput) => {
     if (!await isCallerOrchestrator(toolInput.sessionID, ctx.client)) {
       return;
@@ -51627,7 +51713,7 @@ function createToolExecuteBeforeHandler2(input) {
         }
         const warning = ORCHESTRATOR_DELEGATION_REQUIRED.replace("$FILE_PATH", filePath);
         toolOutput.message = (toolOutput.message || "") + warning;
-        log(`[${HOOK_NAME8}] Injected delegation warning for direct file modification`, {
+        log(`[${HOOK_NAME7}] Injected delegation warning for direct file modification`, {
           sessionID: toolInput.sessionID,
           tool: toolInput.tool,
           filePath
@@ -51636,11 +51722,45 @@ function createToolExecuteBeforeHandler2(input) {
       return;
     }
     if (toolInput.tool === "task") {
+      if (toolInput.callID) {
+        const requestedSessionId = toolOutput.args.session_id;
+        if (requestedSessionId) {
+          pendingTaskRefs.set(toolInput.callID, {
+            kind: "skip",
+            reason: "explicit_resume"
+          });
+        } else {
+          const boulderState = readBoulderState(ctx.directory);
+          const currentTask = boulderState ? readCurrentTopLevelTask(boulderState.active_plan) : null;
+          if (currentTask) {
+            const task = {
+              key: currentTask.key,
+              label: currentTask.label,
+              title: currentTask.title
+            };
+            const hasExistingClaim = [...pendingTaskRefs.values()].some((pendingTaskRef) => pendingTaskRef.kind === "track" && pendingTaskRef.task.key === task.key);
+            if (hasExistingClaim) {
+              pendingTaskRefs.set(toolInput.callID, {
+                kind: "skip",
+                reason: "ambiguous_task_key",
+                task
+              });
+              log(`[${HOOK_NAME7}] Skipping task session persistence for ambiguous task key`, {
+                sessionID: toolInput.sessionID,
+                callID: toolInput.callID,
+                taskKey: task.key
+              });
+            } else {
+              trackTask(toolInput.callID, task);
+            }
+          }
+        }
+      }
       const prompt = toolOutput.args.prompt;
       if (prompt && !prompt.includes(SYSTEM_DIRECTIVE_PREFIX)) {
         toolOutput.args.prompt = `<system-reminder>${SINGLE_TASK_DIRECTIVE}</system-reminder>
 ` + prompt;
-        log(`[${HOOK_NAME8}] Injected single-task directive to task`, {
+        log(`[${HOOK_NAME7}] Injected single-task directive to task`, {
           sessionID: toolInput.sessionID
         });
       }
@@ -51652,6 +51772,7 @@ function createToolExecuteBeforeHandler2(input) {
 function createAtlasHook(ctx, options) {
   const sessions = new Map;
   const pendingFilePaths = new Map;
+  const pendingTaskRefs = new Map;
   const autoCommit = options?.autoCommit ?? true;
   function getState(sessionID) {
     let state3 = sessions.get(sessionID);
@@ -51663,8 +51784,8 @@ function createAtlasHook(ctx, options) {
   }
   return {
     handler: createAtlasEventHandler({ ctx, options, sessions, getState }),
-    "tool.execute.before": createToolExecuteBeforeHandler2({ ctx, pendingFilePaths }),
-    "tool.execute.after": createToolExecuteAfterHandler2({ ctx, pendingFilePaths, autoCommit, getState })
+    "tool.execute.before": createToolExecuteBeforeHandler2({ ctx, pendingFilePaths, pendingTaskRefs }),
+    "tool.execute.after": createToolExecuteAfterHandler2({ ctx, pendingFilePaths, pendingTaskRefs, autoCommit, getState })
   };
 }
 // src/hooks/delegate-task-retry/patterns.ts
@@ -51822,13 +51943,13 @@ function createQuestionLabelTruncatorHook() {
 }
 // src/hooks/stop-continuation-guard/hook.ts
 init_logger();
-var HOOK_NAME9 = "stop-continuation-guard";
+var HOOK_NAME8 = "stop-continuation-guard";
 function createStopContinuationGuardHook(ctx, options) {
   const stoppedSessions = new Set;
   const stop = (sessionID) => {
     stoppedSessions.add(sessionID);
     setContinuationMarkerSource(ctx.directory, sessionID, "stop", "stopped", "continuation stopped");
-    log(`[${HOOK_NAME9}] Continuation stopped for session`, { sessionID });
+    log(`[${HOOK_NAME8}] Continuation stopped for session`, { sessionID });
     const backgroundManager = options?.backgroundManager;
     if (!backgroundManager) {
       return;
@@ -51847,7 +51968,7 @@ function createStopContinuationGuardHook(ctx, options) {
     })).then((results) => {
       const cancelledCount = results.filter((result) => result.status === "fulfilled").length;
       const failedCount = results.length - cancelledCount;
-      log(`[${HOOK_NAME9}] Cancelled background tasks for stopped session`, {
+      log(`[${HOOK_NAME8}] Cancelled background tasks for stopped session`, {
         sessionID,
         cancelledCount,
         failedCount
@@ -51860,7 +51981,7 @@ function createStopContinuationGuardHook(ctx, options) {
   const clear = (sessionID) => {
     stoppedSessions.delete(sessionID);
     setContinuationMarkerSource(ctx.directory, sessionID, "stop", "idle");
-    log(`[${HOOK_NAME9}] Continuation guard cleared for session`, { sessionID });
+    log(`[${HOOK_NAME8}] Continuation guard cleared for session`, { sessionID });
   };
   const event = async ({
     event: event2
@@ -51871,7 +51992,7 @@ function createStopContinuationGuardHook(ctx, options) {
       if (sessionInfo?.id) {
         clear(sessionInfo.id);
         clearContinuationMarker(ctx.directory, sessionInfo.id);
-        log(`[${HOOK_NAME9}] Session deleted: cleaned up`, { sessionID: sessionInfo.id });
+        log(`[${HOOK_NAME8}] Session deleted: cleaned up`, { sessionID: sessionInfo.id });
       }
     }
   };
@@ -51880,7 +52001,7 @@ function createStopContinuationGuardHook(ctx, options) {
   }) => {
     if (sessionID && stoppedSessions.has(sessionID)) {
       clear(sessionID);
-      log(`[${HOOK_NAME9}] Cleared stop state on new user message`, { sessionID });
+      log(`[${HOOK_NAME8}] Cleared stop state on new user message`, { sessionID });
     }
   };
   return {
@@ -52393,7 +52514,7 @@ ${history}
 }
 // src/hooks/compaction-todo-preserver/hook.ts
 init_logger();
-var HOOK_NAME10 = "compaction-todo-preserver";
+var HOOK_NAME9 = "compaction-todo-preserver";
 function extractTodos(response) {
   const payload = response;
   if (Array.isArray(payload?.data)) {
@@ -52413,7 +52534,7 @@ async function resolveTodoWriter() {
       return update;
     }
   } catch (err) {
-    log(`[${HOOK_NAME10}] Failed to resolve Todo.update`, { error: String(err) });
+    log(`[${HOOK_NAME9}] Failed to resolve Todo.update`, { error: String(err) });
   }
   return null;
 }
@@ -52431,9 +52552,9 @@ function createCompactionTodoPreserverHook(ctx) {
       if (todos.length === 0)
         return;
       snapshots.set(sessionID, todos);
-      log(`[${HOOK_NAME10}] Captured todo snapshot`, { sessionID, count: todos.length });
+      log(`[${HOOK_NAME9}] Captured todo snapshot`, { sessionID, count: todos.length });
     } catch (err) {
-      log(`[${HOOK_NAME10}] Failed to capture todos`, { sessionID, error: String(err) });
+      log(`[${HOOK_NAME9}] Failed to capture todos`, { sessionID, error: String(err) });
     }
   };
   const restore = async (sessionID) => {
@@ -52447,23 +52568,23 @@ function createCompactionTodoPreserverHook(ctx) {
       currentTodos = extractTodos(response);
       hasCurrent = true;
     } catch (err) {
-      log(`[${HOOK_NAME10}] Failed to fetch todos post-compaction`, { sessionID, error: String(err) });
+      log(`[${HOOK_NAME9}] Failed to fetch todos post-compaction`, { sessionID, error: String(err) });
     }
     if (hasCurrent && currentTodos.length > 0) {
       snapshots.delete(sessionID);
-      log(`[${HOOK_NAME10}] Skipped restore (todos already present)`, { sessionID, count: currentTodos.length });
+      log(`[${HOOK_NAME9}] Skipped restore (todos already present)`, { sessionID, count: currentTodos.length });
       return;
     }
     const writer = await resolveTodoWriter();
     if (!writer) {
-      log(`[${HOOK_NAME10}] Skipped restore (Todo.update unavailable)`, { sessionID });
+      log(`[${HOOK_NAME9}] Skipped restore (Todo.update unavailable)`, { sessionID });
       return;
     }
     try {
       await writer({ sessionID, todos: snapshot });
-      log(`[${HOOK_NAME10}] Restored todos after compaction`, { sessionID, count: snapshot.length });
+      log(`[${HOOK_NAME9}] Restored todos after compaction`, { sessionID, count: snapshot.length });
     } catch (err) {
-      log(`[${HOOK_NAME10}] Failed to restore todos`, { sessionID, error: String(err) });
+      log(`[${HOOK_NAME9}] Failed to restore todos`, { sessionID, error: String(err) });
     } finally {
       snapshots.delete(sessionID);
     }
@@ -52568,7 +52689,7 @@ This is a reminder only. No automatic action was taken.`;
 }
 
 // src/hooks/unstable-agent-babysitter/unstable-agent-babysitter-hook.ts
-var HOOK_NAME11 = "unstable-agent-babysitter";
+var HOOK_NAME10 = "unstable-agent-babysitter";
 var DEFAULT_TIMEOUT_MS = 120000;
 var COOLDOWN_MS = 5 * 60 * 1000;
 async function resolveMainSessionTarget(ctx, sessionID) {
@@ -52590,7 +52711,7 @@ async function resolveMainSessionTarget(ctx, sessionID) {
       }
     }
   } catch (error48) {
-    log(`[${HOOK_NAME11}] Failed to resolve main session agent`, { sessionID, error: String(error48) });
+    log(`[${HOOK_NAME10}] Failed to resolve main session agent`, { sessionID, error: String(error48) });
   }
   return { agent, model, tools: resolveInheritedPromptTools(sessionID, tools) };
 }
@@ -52623,7 +52744,7 @@ async function getThinkingSummary(ctx, sessionID) {
       return combined;
     return combined.slice(0, THINKING_SUMMARY_MAX_CHARS) + "...";
   } catch (error48) {
-    log(`[${HOOK_NAME11}] Failed to fetch thinking summary`, { sessionID, error: String(error48) });
+    log(`[${HOOK_NAME10}] Failed to fetch thinking summary`, { sessionID, error: String(error48) });
     return null;
   }
 }
@@ -52673,9 +52794,9 @@ function createUnstableAgentBabysitterHook(ctx, options) {
           query: { directory: ctx.directory }
         });
         reminderCooldowns.set(task.id, now);
-        log(`[${HOOK_NAME11}] Reminder injected`, { taskId: task.id, sessionID: mainSessionID });
+        log(`[${HOOK_NAME10}] Reminder injected`, { taskId: task.id, sessionID: mainSessionID });
       } catch (error48) {
-        log(`[${HOOK_NAME11}] Reminder injection failed`, { taskId: task.id, error: String(error48) });
+        log(`[${HOOK_NAME10}] Reminder injection failed`, { taskId: task.id, error: String(error48) });
       }
     }
   };
@@ -52846,7 +52967,7 @@ var RETRYABLE_ERROR_PATTERNS = [
   /(?:^|\s)503(?:\s|$)/,
   /(?:^|\s)529(?:\s|$)/
 ];
-var HOOK_NAME12 = "runtime-fallback";
+var HOOK_NAME11 = "runtime-fallback";
 
 // src/hooks/runtime-fallback/hook.ts
 init_logger();
@@ -53081,7 +53202,7 @@ function getFallbackModelsForSession(sessionID, agent, pluginConfig) {
     if (result)
       return result;
   }
-  log(`[${HOOK_NAME12}] No category/agent fallback models resolved for session`, { sessionID, agent });
+  log(`[${HOOK_NAME11}] No category/agent fallback models resolved for session`, { sessionID, agent });
   return [];
 }
 
@@ -53110,21 +53231,21 @@ function findNextAvailableFallback(state3, fallbackModels, cooldownSeconds) {
     if (!isModelInCooldown(candidate, state3, cooldownSeconds)) {
       return candidate;
     }
-    log(`[${HOOK_NAME12}] Skipping fallback model in cooldown`, { model: candidate, index: i2 });
+    log(`[${HOOK_NAME11}] Skipping fallback model in cooldown`, { model: candidate, index: i2 });
   }
   return;
 }
 function prepareFallback(sessionID, state3, fallbackModels, config2) {
   if (state3.attemptCount >= config2.max_fallback_attempts) {
-    log(`[${HOOK_NAME12}] Max fallback attempts reached`, { sessionID, attempts: state3.attemptCount });
+    log(`[${HOOK_NAME11}] Max fallback attempts reached`, { sessionID, attempts: state3.attemptCount });
     return { success: false, error: "Max fallback attempts reached", maxAttemptsReached: true };
   }
   const nextModel = findNextAvailableFallback(state3, fallbackModels, config2.cooldown_seconds);
   if (!nextModel) {
-    log(`[${HOOK_NAME12}] No available fallback models`, { sessionID });
+    log(`[${HOOK_NAME11}] No available fallback models`, { sessionID });
     return { success: false, error: "No available fallback models (all in cooldown or exhausted)" };
   }
-  log(`[${HOOK_NAME12}] Preparing fallback`, {
+  log(`[${HOOK_NAME11}] Preparing fallback`, {
     sessionID,
     from: state3.currentModel,
     to: nextModel,
@@ -53262,9 +53383,9 @@ function createAutoRetryHelpers(deps) {
   const abortSessionRequest = async (sessionID, source) => {
     try {
       await ctx.client.session.abort({ path: { id: sessionID } });
-      log(`[${HOOK_NAME12}] Aborted in-flight session request (${source})`, { sessionID });
+      log(`[${HOOK_NAME11}] Aborted in-flight session request (${source})`, { sessionID });
     } catch (error48) {
-      log(`[${HOOK_NAME12}] Failed to abort in-flight session request (${source})`, {
+      log(`[${HOOK_NAME11}] Failed to abort in-flight session request (${source})`, {
         sessionID,
         error: String(error48)
       });
@@ -53288,7 +53409,7 @@ function createAutoRetryHelpers(deps) {
       if (!state3)
         return;
       if (sessionRetryInFlight.has(sessionID)) {
-        log(`[${HOOK_NAME12}] Overriding in-flight retry due to session timeout`, { sessionID });
+        log(`[${HOOK_NAME11}] Overriding in-flight retry due to session timeout`, { sessionID });
       }
       await abortSessionRequest(sessionID, "session.timeout");
       sessionRetryInFlight.delete(sessionID);
@@ -53298,7 +53419,7 @@ function createAutoRetryHelpers(deps) {
       const fallbackModels = getFallbackModelsForSession(sessionID, resolvedAgent, pluginConfig);
       if (fallbackModels.length === 0)
         return;
-      log(`[${HOOK_NAME12}] Session fallback timeout reached`, {
+      log(`[${HOOK_NAME11}] Session fallback timeout reached`, {
         sessionID,
         timeoutSeconds: config2.timeout_seconds,
         currentModel: state3.currentModel
@@ -53312,12 +53433,12 @@ function createAutoRetryHelpers(deps) {
   };
   const autoRetryWithFallback = async (sessionID, newModel, resolvedAgent, source) => {
     if (sessionRetryInFlight.has(sessionID)) {
-      log(`[${HOOK_NAME12}] Retry already in flight, skipping (${source})`, { sessionID });
+      log(`[${HOOK_NAME11}] Retry already in flight, skipping (${source})`, { sessionID });
       return;
     }
     const retryModelPayload = buildRetryModelPayload(newModel);
     if (!retryModelPayload) {
-      log(`[${HOOK_NAME12}] Invalid model format (missing provider prefix): ${newModel}`);
+      log(`[${HOOK_NAME11}] Invalid model format (missing provider prefix): ${newModel}`);
       const state3 = sessionStates.get(sessionID);
       if (state3?.pendingFallbackModel) {
         state3.pendingFallbackModel = undefined;
@@ -53333,7 +53454,7 @@ function createAutoRetryHelpers(deps) {
       });
       const retryParts = getLastUserRetryParts(messagesResp);
       if (retryParts.length > 0) {
-        log(`[${HOOK_NAME12}] Auto-retrying with fallback model (${source})`, {
+        log(`[${HOOK_NAME11}] Auto-retrying with fallback model (${source})`, {
           sessionID,
           model: newModel
         });
@@ -53351,10 +53472,10 @@ function createAutoRetryHelpers(deps) {
         });
         retryDispatched = true;
       } else {
-        log(`[${HOOK_NAME12}] No user message found for auto-retry (${source})`, { sessionID });
+        log(`[${HOOK_NAME11}] No user message found for auto-retry (${source})`, { sessionID });
       }
     } catch (retryError) {
-      log(`[${HOOK_NAME12}] Auto-retry failed (${source})`, { sessionID, error: String(retryError) });
+      log(`[${HOOK_NAME11}] Auto-retry failed (${source})`, { sessionID, error: String(retryError) });
     } finally {
       sessionRetryInFlight.delete(sessionID);
       if (!retryDispatched) {
@@ -53408,7 +53529,7 @@ function createAutoRetryHelpers(deps) {
       }
     }
     if (cleanedCount > 0) {
-      log(`[${HOOK_NAME12}] Cleaned up ${cleanedCount} stale session states`);
+      log(`[${HOOK_NAME11}] Cleaned up ${cleanedCount} stale session states`);
     }
   };
   return {
@@ -53580,7 +53701,7 @@ function resolveFallbackBootstrapModel(options) {
   const agentConfig = options.resolvedAgent && agentConfigs ? agentConfigs[options.resolvedAgent] : undefined;
   const agentModel = typeof agentConfig?.model === "string" ? agentConfig.model : undefined;
   if (agentModel) {
-    log(`[${HOOK_NAME12}] Derived model from agent config for ${options.source}`, {
+    log(`[${HOOK_NAME11}] Derived model from agent config for ${options.source}`, {
       sessionID: options.sessionID,
       agent: options.resolvedAgent,
       model: agentModel
@@ -53591,7 +53712,7 @@ function resolveFallbackBootstrapModel(options) {
   if (agentCategory) {
     const agentCategoryModel = options.pluginConfig?.categories?.[agentCategory]?.model;
     if (typeof agentCategoryModel === "string" && agentCategoryModel.length > 0) {
-      log(`[${HOOK_NAME12}] Derived model from agent category config for ${options.source}`, {
+      log(`[${HOOK_NAME11}] Derived model from agent category config for ${options.source}`, {
         sessionID: options.sessionID,
         agent: options.resolvedAgent,
         category: agentCategory,
@@ -53603,7 +53724,7 @@ function resolveFallbackBootstrapModel(options) {
   const sessionCategory = SessionCategoryRegistry.get(options.sessionID);
   const categoryModel = sessionCategory ? options.pluginConfig?.categories?.[sessionCategory]?.model : undefined;
   if (typeof categoryModel === "string" && categoryModel.length > 0) {
-    log(`[${HOOK_NAME12}] Derived model from session category config for ${options.source}`, {
+    log(`[${HOOK_NAME11}] Derived model from session category config for ${options.source}`, {
       sessionID: options.sessionID,
       category: sessionCategory,
       model: categoryModel
@@ -53631,7 +53752,7 @@ async function dispatchFallbackRetry(deps, helpers, options) {
     await helpers.autoRetryWithFallback(options.sessionID, result.newModel, options.resolvedAgent, options.source);
     return;
   }
-  log(`[${HOOK_NAME12}] Fallback preparation failed`, {
+  log(`[${HOOK_NAME11}] Fallback preparation failed`, {
     sessionID: options.sessionID,
     source: options.source,
     error: result.error
@@ -53683,14 +53804,14 @@ function createSessionStatusHandler(deps, helpers, sessionStatusRetryKeys) {
     sessionStatusRetryKeys.set(sessionID, retryKey);
     if (sessionRetryInFlight.has(sessionID)) {
       if (timeoutEnabled) {
-        log(`[${HOOK_NAME12}] Overriding in-flight retry due to provider auto-retry signal`, {
+        log(`[${HOOK_NAME11}] Overriding in-flight retry due to provider auto-retry signal`, {
           sessionID,
           model
         });
         await helpers.abortSessionRequest(sessionID, "session.status.retry-signal");
         sessionRetryInFlight.delete(sessionID);
       } else {
-        log(`[${HOOK_NAME12}] session.status retry skipped \u2014 retry already in flight`, { sessionID });
+        log(`[${HOOK_NAME11}] session.status retry skipped \u2014 retry already in flight`, { sessionID });
         return;
       }
     }
@@ -53713,7 +53834,7 @@ function createSessionStatusHandler(deps, helpers, sessionStatusRetryKeys) {
       });
       if (!initialModel) {
         sessionStatusRetryKeys.delete(sessionID);
-        log(`[${HOOK_NAME12}] session.status retry missing model info, cannot fallback`, { sessionID });
+        log(`[${HOOK_NAME11}] session.status retry missing model info, cannot fallback`, { sessionID });
         return;
       }
       state3 = createFallbackState(initialModel);
@@ -53722,20 +53843,20 @@ function createSessionStatusHandler(deps, helpers, sessionStatusRetryKeys) {
     sessionLastAccess.set(sessionID, Date.now());
     if (state3.pendingFallbackModel) {
       if (timeoutEnabled) {
-        log(`[${HOOK_NAME12}] Clearing pending fallback due to provider auto-retry signal`, {
+        log(`[${HOOK_NAME11}] Clearing pending fallback due to provider auto-retry signal`, {
           sessionID,
           pendingFallbackModel: state3.pendingFallbackModel
         });
         state3.pendingFallbackModel = undefined;
       } else {
-        log(`[${HOOK_NAME12}] session.status retry skipped (pending fallback in progress)`, {
+        log(`[${HOOK_NAME11}] session.status retry skipped (pending fallback in progress)`, {
           sessionID,
           pendingFallbackModel: state3.pendingFallbackModel
         });
         return;
       }
     }
-    log(`[${HOOK_NAME12}] Detected provider auto-retry signal in session.status`, {
+    log(`[${HOOK_NAME11}] Detected provider auto-retry signal in session.status`, {
       sessionID,
       model: state3.currentModel,
       retryAttempt: status.attempt
@@ -53760,7 +53881,7 @@ function createEventHandler(deps, helpers) {
     const sessionID = sessionInfo?.id;
     const model = sessionInfo?.model;
     if (sessionID && model) {
-      log(`[${HOOK_NAME12}] Session created with model`, { sessionID, model });
+      log(`[${HOOK_NAME11}] Session created with model`, { sessionID, model });
       sessionStates.set(sessionID, createFallbackState(model));
       sessionLastAccess.set(sessionID, Date.now());
     }
@@ -53769,7 +53890,7 @@ function createEventHandler(deps, helpers) {
     const sessionInfo = props?.info;
     const sessionID = sessionInfo?.id;
     if (sessionID) {
-      log(`[${HOOK_NAME12}] Cleaning up session state`, { sessionID });
+      log(`[${HOOK_NAME11}] Cleaning up session state`, { sessionID });
       sessionStates.delete(sessionID);
       sessionLastAccess.delete(sessionID);
       sessionRetryInFlight.delete(sessionID);
@@ -53794,14 +53915,14 @@ function createEventHandler(deps, helpers) {
     if (state3?.pendingFallbackModel) {
       state3.pendingFallbackModel = undefined;
     }
-    log(`[${HOOK_NAME12}] Cleared fallback retry state on session.stop`, { sessionID });
+    log(`[${HOOK_NAME11}] Cleared fallback retry state on session.stop`, { sessionID });
   };
   const handleSessionIdle2 = (props) => {
     const sessionID = props?.sessionID;
     if (!sessionID)
       return;
     if (sessionAwaitingFallbackResult.has(sessionID)) {
-      log(`[${HOOK_NAME12}] session.idle while awaiting fallback result; keeping timeout armed`, { sessionID });
+      log(`[${HOOK_NAME11}] session.idle while awaiting fallback result; keeping timeout armed`, { sessionID });
       return;
     }
     const hadTimeout = sessionFallbackTimeouts.has(sessionID);
@@ -53813,7 +53934,7 @@ function createEventHandler(deps, helpers) {
       state3.pendingFallbackModel = undefined;
     }
     if (hadTimeout) {
-      log(`[${HOOK_NAME12}] Cleared fallback timeout after session completion`, { sessionID });
+      log(`[${HOOK_NAME11}] Cleared fallback timeout after session completion`, { sessionID });
     }
   };
   const handleSessionError = async (props) => {
@@ -53821,12 +53942,12 @@ function createEventHandler(deps, helpers) {
     const error48 = props?.error;
     const agent = props?.agent;
     if (!sessionID) {
-      log(`[${HOOK_NAME12}] session.error without sessionID, skipping`);
+      log(`[${HOOK_NAME11}] session.error without sessionID, skipping`);
       return;
     }
     const resolvedAgent = await helpers.resolveAgentForSessionFromContext(sessionID, agent);
     if (sessionRetryInFlight.has(sessionID)) {
-      log(`[${HOOK_NAME12}] session.error skipped \u2014 retry in flight`, {
+      log(`[${HOOK_NAME11}] session.error skipped \u2014 retry in flight`, {
         sessionID,
         retryInFlight: true
       });
@@ -53834,7 +53955,7 @@ function createEventHandler(deps, helpers) {
     }
     sessionAwaitingFallbackResult.delete(sessionID);
     helpers.clearSessionFallbackTimeout(sessionID);
-    log(`[${HOOK_NAME12}] session.error received`, {
+    log(`[${HOOK_NAME11}] session.error received`, {
       sessionID,
       agent,
       resolvedAgent,
@@ -53843,7 +53964,7 @@ function createEventHandler(deps, helpers) {
       errorType: classifyErrorType(error48)
     });
     if (!isRetryableError(error48, config2.retry_on_errors)) {
-      log(`[${HOOK_NAME12}] Error not retryable, skipping fallback`, {
+      log(`[${HOOK_NAME11}] Error not retryable, skipping fallback`, {
         sessionID,
         retryable: false,
         statusCode: extractStatusCode(error48, config2.retry_on_errors),
@@ -53855,7 +53976,7 @@ function createEventHandler(deps, helpers) {
     let state3 = sessionStates.get(sessionID);
     const fallbackModels = getFallbackModelsForSession(sessionID, resolvedAgent, pluginConfig);
     if (fallbackModels.length === 0) {
-      log(`[${HOOK_NAME12}] No fallback models configured`, { sessionID, agent });
+      log(`[${HOOK_NAME11}] No fallback models configured`, { sessionID, agent });
       return;
     }
     if (!state3) {
@@ -53867,7 +53988,7 @@ function createEventHandler(deps, helpers) {
         pluginConfig
       });
       if (!initialModel) {
-        log(`[${HOOK_NAME12}] No model info available, cannot fallback`, { sessionID });
+        log(`[${HOOK_NAME11}] No model info available, cannot fallback`, { sessionID });
         return;
       }
       state3 = createFallbackState(initialModel);
@@ -54003,7 +54124,7 @@ function createMessageUpdateHandler(deps, helpers) {
       }
       const hasVisible = await checkVisibleResponse(ctx, sessionID, info);
       if (!hasVisible) {
-        log(`[${HOOK_NAME12}] Assistant update observed without visible final response; keeping fallback timeout`, {
+        log(`[${HOOK_NAME11}] Assistant update observed without visible final response; keeping fallback timeout`, {
           sessionID,
           model
         });
@@ -54016,17 +54137,17 @@ function createMessageUpdateHandler(deps, helpers) {
       if (state3?.pendingFallbackModel) {
         state3.pendingFallbackModel = undefined;
       }
-      log(`[${HOOK_NAME12}] Assistant response observed; cleared fallback timeout`, { sessionID, model });
+      log(`[${HOOK_NAME11}] Assistant response observed; cleared fallback timeout`, { sessionID, model });
       return;
     }
     if (sessionID && role === "assistant" && error48) {
       sessionAwaitingFallbackResult.delete(sessionID);
       if (sessionRetryInFlight.has(sessionID) && !retrySignal) {
-        log(`[${HOOK_NAME12}] message.updated fallback skipped (retry in flight)`, { sessionID });
+        log(`[${HOOK_NAME11}] message.updated fallback skipped (retry in flight)`, { sessionID });
         return;
       }
       if (retrySignal && sessionRetryInFlight.has(sessionID) && timeoutEnabled) {
-        log(`[${HOOK_NAME12}] Overriding in-flight retry due to provider auto-retry signal`, {
+        log(`[${HOOK_NAME11}] Overriding in-flight retry due to provider auto-retry signal`, {
           sessionID,
           model
         });
@@ -54034,12 +54155,12 @@ function createMessageUpdateHandler(deps, helpers) {
         sessionRetryInFlight.delete(sessionID);
       }
       if (retrySignal && timeoutEnabled) {
-        log(`[${HOOK_NAME12}] Detected provider auto-retry signal`, { sessionID, model });
+        log(`[${HOOK_NAME11}] Detected provider auto-retry signal`, { sessionID, model });
       }
       if (!retrySignal) {
         helpers.clearSessionFallbackTimeout(sessionID);
       }
-      log(`[${HOOK_NAME12}] message.updated with assistant error`, {
+      log(`[${HOOK_NAME11}] message.updated with assistant error`, {
         sessionID,
         model,
         statusCode: extractStatusCode(error48, config2.retry_on_errors),
@@ -54047,7 +54168,7 @@ function createMessageUpdateHandler(deps, helpers) {
         errorType: classifyErrorType(error48)
       });
       if (!isRetryableError(error48, config2.retry_on_errors)) {
-        log(`[${HOOK_NAME12}] message.updated error not retryable, skipping fallback`, {
+        log(`[${HOOK_NAME11}] message.updated error not retryable, skipping fallback`, {
           sessionID,
           statusCode: extractStatusCode(error48, config2.retry_on_errors),
           errorName: extractErrorName(error48),
@@ -54071,7 +54192,7 @@ function createMessageUpdateHandler(deps, helpers) {
           pluginConfig
         });
         if (!initialModel) {
-          log(`[${HOOK_NAME12}] message.updated missing model info, cannot fallback`, {
+          log(`[${HOOK_NAME11}] message.updated missing model info, cannot fallback`, {
             sessionID,
             errorName: extractErrorName(error48),
             errorType: classifyErrorType(error48)
@@ -54085,13 +54206,13 @@ function createMessageUpdateHandler(deps, helpers) {
         sessionLastAccess.set(sessionID, Date.now());
         if (state3.pendingFallbackModel) {
           if (retrySignal && timeoutEnabled) {
-            log(`[${HOOK_NAME12}] Clearing pending fallback due to provider auto-retry signal`, {
+            log(`[${HOOK_NAME11}] Clearing pending fallback due to provider auto-retry signal`, {
               sessionID,
               pendingFallbackModel: state3.pendingFallbackModel
             });
             state3.pendingFallbackModel = undefined;
           } else {
-            log(`[${HOOK_NAME12}] message.updated fallback skipped (pending fallback in progress)`, {
+            log(`[${HOOK_NAME11}] message.updated fallback skipped (pending fallback in progress)`, {
               sessionID,
               pendingFallbackModel: state3.pendingFallbackModel
             });
@@ -54128,7 +54249,7 @@ function createChatMessageHandler2(deps) {
         state3.pendingFallbackModel = undefined;
         return;
       }
-      log(`[${HOOK_NAME12}] Detected manual model change, resetting fallback state`, {
+      log(`[${HOOK_NAME11}] Detected manual model change, resetting fallback state`, {
         sessionID,
         from: state3.currentModel,
         to: requestedModel
@@ -54140,7 +54261,7 @@ function createChatMessageHandler2(deps) {
     if (state3.currentModel === state3.originalModel)
       return;
     const activeModel = state3.currentModel;
-    log(`[${HOOK_NAME12}] Applying fallback model override`, {
+    log(`[${HOOK_NAME11}] Applying fallback model override`, {
       sessionID,
       from: input.model,
       to: activeModel
@@ -54172,7 +54293,7 @@ function createRuntimeFallbackHook(ctx, options) {
     try {
       pluginConfig = loadPluginConfig(ctx.directory, ctx);
     } catch {
-      log(`[${HOOK_NAME12}] Plugin config not available`);
+      log(`[${HOOK_NAME11}] Plugin config not available`);
     }
   }
   const deps = {
@@ -54222,7 +54343,7 @@ function createRuntimeFallbackHook(ctx, options) {
   };
 }
 // src/hooks/write-existing-file-guard/hook.ts
-import { existsSync as existsSync58, realpathSync as realpathSync4 } from "fs";
+import { existsSync as existsSync60, realpathSync as realpathSync4 } from "fs";
 import { basename as basename7, dirname as dirname16, isAbsolute as isAbsolute7, join as join66, normalize, relative as relative5, resolve as resolve7 } from "path";
 var MAX_TRACKED_SESSIONS = 256;
 var MAX_TRACKED_PATHS_PER_SESSION = 1024;
@@ -54244,7 +54365,7 @@ function isPathInsideDirectory(pathToCheck, directory) {
 }
 function toCanonicalPath(absolutePath) {
   let canonicalPath = absolutePath;
-  if (existsSync58(absolutePath)) {
+  if (existsSync60(absolutePath)) {
     try {
       canonicalPath = realpathSync4.native(absolutePath);
     } catch {
@@ -54252,7 +54373,7 @@ function toCanonicalPath(absolutePath) {
     }
   } else {
     const absoluteDir = dirname16(absolutePath);
-    const resolvedDir = existsSync58(absoluteDir) ? realpathSync4.native(absoluteDir) : absoluteDir;
+    const resolvedDir = existsSync60(absoluteDir) ? realpathSync4.native(absoluteDir) : absoluteDir;
     canonicalPath = join66(resolvedDir, basename7(absolutePath));
   }
   return normalize(canonicalPath);
@@ -54353,7 +54474,7 @@ function createWriteExistingFileGuardHook(ctx) {
         return;
       }
       if (toolName === "read") {
-        if (!existsSync58(resolvedPath) || !input.sessionID) {
+        if (!existsSync60(resolvedPath) || !input.sessionID) {
           return;
         }
         registerReadPermission(input.sessionID, canonicalPath);
@@ -54363,7 +54484,7 @@ function createWriteExistingFileGuardHook(ctx) {
       if (argsRecord && "overwrite" in argsRecord) {
         delete argsRecord.overwrite;
       }
-      if (!existsSync58(resolvedPath)) {
+      if (!existsSync60(resolvedPath)) {
         return;
       }
       const isSisyphusPath2 = canonicalPath.includes("/.sisyphus/");
@@ -55492,13 +55613,13 @@ var DEFAULT_MAX_SYMBOLS = 200;
 var DEFAULT_MAX_DIAGNOSTICS = 200;
 var DEFAULT_MAX_DIRECTORY_FILES = 50;
 // src/tools/lsp/server-config-loader.ts
-import { existsSync as existsSync59, readFileSync as readFileSync43 } from "fs";
+import { existsSync as existsSync61, readFileSync as readFileSync45 } from "fs";
 import { join as join67 } from "path";
 function loadJsonFile(path12) {
-  if (!existsSync59(path12))
+  if (!existsSync61(path12))
     return null;
   try {
-    return parseJsonc(readFileSync43(path12, "utf-8"));
+    return parseJsonc(readFileSync45(path12, "utf-8"));
   } catch {
     return null;
   }
@@ -55578,7 +55699,7 @@ function getMergedServers() {
 }
 
 // src/tools/lsp/server-installation.ts
-import { existsSync as existsSync60 } from "fs";
+import { existsSync as existsSync62 } from "fs";
 import { delimiter, join as join69 } from "path";
 
 // src/tools/lsp/server-path-bases.ts
@@ -55601,7 +55722,7 @@ function isServerInstalled(command) {
     return false;
   const cmd = command[0];
   if (cmd.includes("/") || cmd.includes("\\")) {
-    if (existsSync60(cmd))
+    if (existsSync62(cmd))
       return true;
   }
   const isWindows2 = process.platform === "win32";
@@ -55622,14 +55743,14 @@ function isServerInstalled(command) {
   const paths = pathEnv.split(delimiter);
   for (const p of paths) {
     for (const suffix of exts) {
-      if (existsSync60(join69(p, cmd + suffix))) {
+      if (existsSync62(join69(p, cmd + suffix))) {
         return true;
       }
     }
   }
   for (const base of getLspServerAdditionalPathBases(process.cwd())) {
     for (const suffix of exts) {
-      if (existsSync60(join69(base, cmd + suffix))) {
+      if (existsSync62(join69(base, cmd + suffix))) {
         return true;
       }
     }
@@ -55687,13 +55808,13 @@ function getLanguageId(ext) {
 init_logger();
 var {spawn: bunSpawn2 } = globalThis.Bun;
 import { spawn as nodeSpawn2 } from "child_process";
-import { existsSync as existsSync61, statSync as statSync7 } from "fs";
+import { existsSync as existsSync63, statSync as statSync7 } from "fs";
 function shouldUseNodeSpawn() {
   return process.platform === "win32";
 }
 function validateCwd(cwd) {
   try {
-    if (!existsSync61(cwd)) {
+    if (!existsSync63(cwd)) {
       return { valid: false, error: `Working directory does not exist: ${cwd}` };
     }
     const stats = statSync7(cwd);
@@ -55825,7 +55946,7 @@ function spawnProcess(command, options) {
   return proc;
 }
 // src/tools/lsp/lsp-client.ts
-import { readFileSync as readFileSync44 } from "fs";
+import { readFileSync as readFileSync46 } from "fs";
 import { extname as extname3, resolve as resolve8 } from "path";
 import { pathToFileURL as pathToFileURL2 } from "url";
 
@@ -56097,7 +56218,7 @@ class LSPClient extends LSPClientConnection {
   async openFile(filePath) {
     const absPath = resolve8(filePath);
     const uri = pathToFileURL2(absPath).href;
-    const text = readFileSync44(absPath, "utf-8");
+    const text = readFileSync46(absPath, "utf-8");
     if (!this.openedFiles.has(absPath)) {
       const ext = extname3(absPath);
       const languageId = getLanguageId(ext);
@@ -56438,9 +56559,9 @@ var lspManager = LSPServerManager.getInstance();
 // src/tools/lsp/lsp-client-wrapper.ts
 import { extname as extname4, resolve as resolve9 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
-import { existsSync as existsSync62, statSync as statSync8 } from "fs";
+import { existsSync as existsSync64, statSync as statSync8 } from "fs";
 function isDirectoryPath(filePath) {
-  if (!existsSync62(filePath)) {
+  if (!existsSync64(filePath)) {
     return false;
   }
   return statSync8(filePath).isDirectory();
@@ -56450,14 +56571,14 @@ function uriToPath(uri) {
 }
 function findWorkspaceRoot(filePath) {
   let dir = resolve9(filePath);
-  if (!existsSync62(dir) || !isDirectoryPath(dir)) {
+  if (!existsSync64(dir) || !isDirectoryPath(dir)) {
     dir = __require("path").dirname(dir);
   }
   const markers = [".git", "package.json", "pyproject.toml", "Cargo.toml", "go.mod", "pom.xml", "build.gradle"];
   let prevDir = "";
   while (dir !== prevDir) {
     for (const marker of markers) {
-      if (existsSync62(__require("path").join(dir, marker))) {
+      if (existsSync64(__require("path").join(dir, marker))) {
         return dir;
       }
     }
@@ -56632,10 +56753,10 @@ function formatApplyResult(result) {
 `);
 }
 // src/tools/lsp/workspace-edit.ts
-import { readFileSync as readFileSync45, writeFileSync as writeFileSync18 } from "fs";
+import { readFileSync as readFileSync47, writeFileSync as writeFileSync18 } from "fs";
 function applyTextEditsToFile(filePath, edits) {
   try {
-    let content = readFileSync45(filePath, "utf-8");
+    let content = readFileSync47(filePath, "utf-8");
     const lines = content.split(`
 `);
     const sortedEdits = [...edits].sort((a, b) => {
@@ -56701,7 +56822,7 @@ function applyWorkspaceEdit(edit) {
           try {
             const oldPath = uriToPath(change.oldUri);
             const newPath = uriToPath(change.newUri);
-            const content = readFileSync45(oldPath, "utf-8");
+            const content = readFileSync47(oldPath, "utf-8");
             writeFileSync18(newPath, content, "utf-8");
             __require("fs").unlinkSync(oldPath);
             result.filesModified.push(newPath);
@@ -69184,7 +69305,7 @@ var lsp_symbols = tool({
 import { resolve as resolve11 } from "path";
 
 // src/tools/lsp/directory-diagnostics.ts
-import { existsSync as existsSync63, lstatSync as lstatSync2, readdirSync as readdirSync17 } from "fs";
+import { existsSync as existsSync65, lstatSync as lstatSync2, readdirSync as readdirSync17 } from "fs";
 import { extname as extname5, join as join70, resolve as resolve10 } from "path";
 var SKIP_DIRECTORIES = new Set(["node_modules", ".git", "dist", "build", ".next", "out"]);
 function collectFilesWithExtension(dir, extension, maxFiles) {
@@ -69230,7 +69351,7 @@ async function aggregateDiagnosticsForDirectory(directory, extension, severity, 
     throw new Error(`Extension must start with a dot (e.g., ".ts", not "${extension}"). ` + `Use ".${extension}" instead.`);
   }
   const absDir = resolve10(directory);
-  if (!existsSync63(absDir)) {
+  if (!existsSync65(absDir)) {
     throw new Error(`Directory does not exist: ${absDir}`);
   }
   const serverResult = findServerForExtension(extension);
@@ -69433,10 +69554,10 @@ var DEFAULT_MAX_MATCHES = 500;
 // src/tools/ast-grep/sg-cli-path.ts
 import { createRequire as createRequire4 } from "module";
 import { dirname as dirname17, join as join72 } from "path";
-import { existsSync as existsSync65, statSync as statSync9 } from "fs";
+import { existsSync as existsSync67, statSync as statSync9 } from "fs";
 
 // src/tools/ast-grep/downloader.ts
-import { existsSync as existsSync64 } from "fs";
+import { existsSync as existsSync66 } from "fs";
 import { join as join71 } from "path";
 import { homedir as homedir13 } from "os";
 import { createRequire as createRequire3 } from "module";
@@ -69487,7 +69608,7 @@ async function downloadAstGrep(version3 = DEFAULT_VERSION) {
   const cacheDir = getCacheDir3();
   const binaryName = getBinaryName3();
   const binaryPath = join71(cacheDir, binaryName);
-  if (existsSync64(binaryPath)) {
+  if (existsSync66(binaryPath)) {
     return binaryPath;
   }
   const { arch, os: os6 } = platformInfo;
@@ -69550,7 +69671,7 @@ function findSgCliPathSync() {
     const cliPackageJsonPath = require2.resolve("@ast-grep/cli/package.json");
     const cliDirectory = dirname17(cliPackageJsonPath);
     const sgPath = join72(cliDirectory, binaryName);
-    if (existsSync65(sgPath) && isValidBinary(sgPath)) {
+    if (existsSync67(sgPath) && isValidBinary(sgPath)) {
       return sgPath;
     }
   } catch {}
@@ -69562,7 +69683,7 @@ function findSgCliPathSync() {
       const packageDirectory = dirname17(packageJsonPath);
       const astGrepBinaryName = process.platform === "win32" ? "ast-grep.exe" : "ast-grep";
       const binaryPath = join72(packageDirectory, astGrepBinaryName);
-      if (existsSync65(binaryPath) && isValidBinary(binaryPath)) {
+      if (existsSync67(binaryPath) && isValidBinary(binaryPath)) {
         return binaryPath;
       }
     } catch {}
@@ -69570,7 +69691,7 @@ function findSgCliPathSync() {
   if (process.platform === "darwin") {
     const homebrewPaths = ["/opt/homebrew/bin/sg", "/usr/local/bin/sg"];
     for (const path12 of homebrewPaths) {
-      if (existsSync65(path12) && isValidBinary(path12)) {
+      if (existsSync67(path12) && isValidBinary(path12)) {
         return path12;
       }
     }
@@ -69594,14 +69715,14 @@ function setSgCliPath(path12) {
 }
 // src/tools/ast-grep/cli.ts
 var {spawn: spawn10 } = globalThis.Bun;
-import { existsSync as existsSync67 } from "fs";
+import { existsSync as existsSync69 } from "fs";
 
 // src/tools/ast-grep/cli-binary-path-resolution.ts
-import { existsSync as existsSync66 } from "fs";
+import { existsSync as existsSync68 } from "fs";
 var resolvedCliPath3 = null;
 var initPromise3 = null;
 async function getAstGrepPath() {
-  if (resolvedCliPath3 !== null && existsSync66(resolvedCliPath3)) {
+  if (resolvedCliPath3 !== null && existsSync68(resolvedCliPath3)) {
     return resolvedCliPath3;
   }
   if (initPromise3) {
@@ -69609,7 +69730,7 @@ async function getAstGrepPath() {
   }
   initPromise3 = (async () => {
     const syncPath = findSgCliPathSync();
-    if (syncPath && existsSync66(syncPath)) {
+    if (syncPath && existsSync68(syncPath)) {
       resolvedCliPath3 = syncPath;
       setSgCliPath(syncPath);
       return syncPath;
@@ -69708,7 +69829,7 @@ async function runSg(options) {
   const paths = options.paths && options.paths.length > 0 ? options.paths : ["."];
   args.push(...paths);
   let cliPath = getSgCliPath();
-  if (!cliPath || !existsSync67(cliPath)) {
+  if (!cliPath || !existsSync69(cliPath)) {
     const downloadedPath = await getAstGrepPath();
     if (downloadedPath) {
       cliPath = downloadedPath;
@@ -69962,12 +70083,12 @@ import { resolve as resolve12 } from "path";
 var {spawn: spawn11 } = globalThis.Bun;
 
 // src/tools/grep/constants.ts
-import { existsSync as existsSync69 } from "fs";
+import { existsSync as existsSync71 } from "fs";
 import { join as join74, dirname as dirname18 } from "path";
 import { spawnSync as spawnSync2 } from "child_process";
 
 // src/tools/grep/downloader.ts
-import { existsSync as existsSync68, readdirSync as readdirSync18 } from "fs";
+import { existsSync as existsSync70, readdirSync as readdirSync18 } from "fs";
 import { join as join73 } from "path";
 function findFileRecursive(dir, filename) {
   try {
@@ -70031,7 +70152,7 @@ async function downloadAndInstallRipgrep() {
   }
   const installDir = getInstallDir();
   const rgPath = getRgPath();
-  if (existsSync68(rgPath)) {
+  if (existsSync70(rgPath)) {
     return rgPath;
   }
   ensureCacheDir(installDir);
@@ -70046,7 +70167,7 @@ async function downloadAndInstallRipgrep() {
       await extractZip2(archivePath, installDir);
     }
     ensureExecutable(rgPath);
-    if (!existsSync68(rgPath)) {
+    if (!existsSync70(rgPath)) {
       throw new Error("ripgrep binary not found after extraction");
     }
     return rgPath;
@@ -70058,7 +70179,7 @@ async function downloadAndInstallRipgrep() {
 }
 function getInstalledRipgrepPath() {
   const rgPath = getRgPath();
-  return existsSync68(rgPath) ? rgPath : null;
+  return existsSync70(rgPath) ? rgPath : null;
 }
 
 // src/tools/grep/constants.ts
@@ -70089,7 +70210,7 @@ function getOpenCodeBundledRg() {
     join74(execDir, "..", "libexec", rgName)
   ];
   for (const candidate of candidates) {
-    if (existsSync69(candidate)) {
+    if (existsSync71(candidate)) {
       return candidate;
     }
   }
@@ -71106,7 +71227,7 @@ Has Todos: Yes (12 items, 8 completed)
 Has Transcript: Yes (234 entries)`;
 
 // src/tools/session-manager/storage.ts
-import { existsSync as existsSync70 } from "fs";
+import { existsSync as existsSync72 } from "fs";
 import { readdir, readFile } from "fs/promises";
 import { join as join76 } from "path";
 var sdkClient = null;
@@ -71127,7 +71248,7 @@ async function getMainSessions(options) {
       return [];
     }
   }
-  if (!existsSync70(SESSION_STORAGE))
+  if (!existsSync72(SESSION_STORAGE))
     return [];
   const sessions = [];
   try {
@@ -71168,7 +71289,7 @@ async function getAllSessions() {
       return [];
     }
   }
-  if (!existsSync70(MESSAGE_STORAGE))
+  if (!existsSync72(MESSAGE_STORAGE))
     return [];
   const sessions = [];
   async function scanDirectory(dir) {
@@ -71237,7 +71358,7 @@ async function readSessionMessages2(sessionID) {
     }
   }
   const messageDir = getMessageDir(sessionID);
-  if (!messageDir || !existsSync70(messageDir))
+  if (!messageDir || !existsSync72(messageDir))
     return [];
   const messages = [];
   try {
@@ -71273,7 +71394,7 @@ async function readSessionMessages2(sessionID) {
 }
 async function readParts2(messageID) {
   const partDir = join76(PART_STORAGE, messageID);
-  if (!existsSync70(partDir))
+  if (!existsSync72(partDir))
     return [];
   const parts = [];
   try {
@@ -71308,7 +71429,7 @@ async function readSessionTodos(sessionID) {
       return [];
     }
   }
-  if (!existsSync70(TODO_DIR2))
+  if (!existsSync72(TODO_DIR2))
     return [];
   try {
     const allFiles = await readdir(TODO_DIR2);
@@ -71335,10 +71456,10 @@ async function readSessionTodos(sessionID) {
   return [];
 }
 async function readSessionTranscript(sessionID) {
-  if (!existsSync70(TRANSCRIPT_DIR2))
+  if (!existsSync72(TRANSCRIPT_DIR2))
     return 0;
   const transcriptFile = join76(TRANSCRIPT_DIR2, `${sessionID}.jsonl`);
-  if (!existsSync70(transcriptFile))
+  if (!existsSync72(transcriptFile))
     return 0;
   try {
     const content = await readFile(transcriptFile, "utf-8");
@@ -72046,6 +72167,50 @@ function truncateText(text, maxLength) {
 }
 
 // src/tools/background-task/task-status-format.ts
+function formatElapsedMs(ms) {
+  if (ms < 60000)
+    return `${Math.round(ms / 1000)}s`;
+  if (ms < 3600000)
+    return `${Math.round(ms / 60000)}m`;
+  return `${Math.round(ms / 3600000)}h`;
+}
+function buildHealthSummary(task) {
+  const now = Date.now();
+  if (task.status === "pending") {
+    if (!task.queuedAt) {
+      return { label: "queued", note: "Task is waiting for a concurrency slot." };
+    }
+    const queuedForMs = now - task.queuedAt.getTime();
+    return {
+      label: queuedForMs >= 5 * 60000 ? "queued-long" : "queued",
+      note: queuedForMs >= 5 * 60000 ? `Task has been waiting for ${formatElapsedMs(queuedForMs)}. This usually means the concurrency budget is saturated.` : `Task has been queued for ${formatElapsedMs(queuedForMs)} and is still waiting for a concurrency slot.`
+    };
+  }
+  if (task.status !== "running") {
+    return null;
+  }
+  if (!task.progress?.lastUpdate) {
+    if (!task.startedAt) {
+      return { label: "starting", note: "Task has started but no progress timestamp is available yet." };
+    }
+    const runtimeMs = now - task.startedAt.getTime();
+    return {
+      label: runtimeMs >= 10 * 60000 ? "silent-long" : "starting",
+      note: runtimeMs >= 10 * 60000 ? `Task has been running for ${formatElapsedMs(runtimeMs)} without a recorded progress update.` : `Task has been running for ${formatElapsedMs(runtimeMs)} and has not emitted a progress update yet.`
+    };
+  }
+  const lastUpdateMs = now - task.progress.lastUpdate.getTime();
+  if (lastUpdateMs >= 10 * 60000) {
+    return {
+      label: "possibly-stalled",
+      note: `Last recorded progress was ${formatElapsedMs(lastUpdateMs)} ago. The task may be stalled or waiting on a provider/tool response.`
+    };
+  }
+  return {
+    label: "healthy",
+    note: `Last recorded progress was ${formatElapsedMs(lastUpdateMs)} ago.`
+  };
+}
 function formatTaskStatus(task) {
   let duration5;
   if (task.status === "pending" && task.queuedAt) {
@@ -72060,6 +72225,15 @@ function formatTaskStatus(task) {
   if (task.progress?.lastTool) {
     progressSection = `
 | Last tool | ${task.progress.lastTool} |`;
+  }
+  if (task.progress?.lastUpdate) {
+    progressSection += `
+| Last progress | ${task.progress.lastUpdate.toISOString()} |`;
+  }
+  const health = buildHealthSummary(task);
+  if (health) {
+    progressSection += `
+| Health | ${health.label} |`;
   }
   let lastMessageSection = "";
   if (task.progress?.lastMessage) {
@@ -72090,6 +72264,11 @@ ${truncated}
     statusNote = `
 
 > **Interrupted**: The task was interrupted by a prompt error. The session may contain partial results.`;
+  }
+  if (health) {
+    statusNote += `
+
+> **Health**: ${health.note}`;
   }
   const durationLabel = task.status === "pending" ? "Queued for" : "Duration";
   return `# Task Status
@@ -73186,7 +73365,7 @@ async function resolveMultimodalLookerAgentMetadata(ctx) {
 
 // src/tools/look-at/image-converter.ts
 import { execFileSync as execFileSync3 } from "child_process";
-import { existsSync as existsSync71, mkdtempSync, readFileSync as readFileSync46, rmSync as rmSync3, unlinkSync as unlinkSync11, writeFileSync as writeFileSync19 } from "fs";
+import { existsSync as existsSync73, mkdtempSync, readFileSync as readFileSync48, rmSync as rmSync3, unlinkSync as unlinkSync11, writeFileSync as writeFileSync19 } from "fs";
 import { tmpdir as tmpdir6 } from "os";
 import { dirname as dirname21, join as join77 } from "path";
 var SUPPORTED_FORMATS = new Set([
@@ -73226,7 +73405,7 @@ function needsConversion(mimeType) {
   return mimeType.startsWith("image/");
 }
 function convertImageToJpeg(inputPath, mimeType) {
-  if (!existsSync71(inputPath)) {
+  if (!existsSync73(inputPath)) {
     throw new Error(`File not found: ${inputPath}`);
   }
   const tempDir = mkdtempSync(join77(tmpdir6(), "opencode-img-"));
@@ -73240,7 +73419,7 @@ function convertImageToJpeg(inputPath, mimeType) {
           encoding: "utf-8",
           timeout: CONVERSION_TIMEOUT_MS
         });
-        if (existsSync71(outputPath)) {
+        if (existsSync73(outputPath)) {
           log(`[image-converter] Converted using sips: ${outputPath}`);
           return outputPath;
         }
@@ -73255,7 +73434,7 @@ function convertImageToJpeg(inputPath, mimeType) {
         encoding: "utf-8",
         timeout: CONVERSION_TIMEOUT_MS
       });
-      if (existsSync71(outputPath)) {
+      if (existsSync73(outputPath)) {
         log(`[image-converter] Converted using ImageMagick: ${outputPath}`);
         return outputPath;
       }
@@ -73268,7 +73447,7 @@ function convertImageToJpeg(inputPath, mimeType) {
 ` + `  RHEL/CentOS: sudo yum install ImageMagick`);
   } catch (error92) {
     try {
-      if (existsSync71(outputPath)) {
+      if (existsSync73(outputPath)) {
         unlinkSync11(outputPath);
       }
     } catch {}
@@ -73282,11 +73461,11 @@ function convertImageToJpeg(inputPath, mimeType) {
 function cleanupConvertedImage(filePath) {
   try {
     const tempDirectory = dirname21(filePath);
-    if (existsSync71(filePath)) {
+    if (existsSync73(filePath)) {
       unlinkSync11(filePath);
       log(`[image-converter] Cleaned up temporary file: ${filePath}`);
     }
-    if (existsSync71(tempDirectory)) {
+    if (existsSync73(tempDirectory)) {
       rmSync3(tempDirectory, { recursive: true, force: true });
       log(`[image-converter] Cleaned up temporary directory: ${tempDirectory}`);
     }
@@ -73306,14 +73485,14 @@ function convertBase64ImageToJpeg(base64Data, mimeType) {
     log(`[image-converter] Converting Base64 ${mimeType} to JPEG`);
     const outputPath = convertImageToJpeg(inputPath, mimeType);
     tempFiles.push(outputPath);
-    const convertedBuffer = readFileSync46(outputPath);
+    const convertedBuffer = readFileSync48(outputPath);
     const convertedBase64 = convertedBuffer.toString("base64");
     log(`[image-converter] Base64 conversion successful`);
     return { base64: convertedBase64, tempFiles };
   } catch (error92) {
     tempFiles.forEach((file3) => {
       try {
-        if (existsSync71(file3))
+        if (existsSync73(file3))
           unlinkSync11(file3);
       } catch {}
     });
@@ -75403,7 +75582,7 @@ var TaskDeleteInputSchema = exports_external.object({
 
 // src/features/claude-tasks/storage.ts
 import { join as join78, dirname as dirname22, basename as basename9, isAbsolute as isAbsolute8 } from "path";
-import { existsSync as existsSync72, mkdirSync as mkdirSync14, readFileSync as readFileSync47, writeFileSync as writeFileSync20, renameSync as renameSync2, unlinkSync as unlinkSync12, readdirSync as readdirSync19 } from "fs";
+import { existsSync as existsSync74, mkdirSync as mkdirSync14, readFileSync as readFileSync49, writeFileSync as writeFileSync20, renameSync as renameSync2, unlinkSync as unlinkSync12, readdirSync as readdirSync19 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
 function getTaskDir(config4 = {}) {
   const tasksConfig = config4.sisyphus?.tasks;
@@ -75431,16 +75610,16 @@ function resolveTaskListId(config4 = {}) {
   return sanitizePathSegment(basename9(process.cwd()));
 }
 function ensureDir(dirPath) {
-  if (!existsSync72(dirPath)) {
+  if (!existsSync74(dirPath)) {
     mkdirSync14(dirPath, { recursive: true });
   }
 }
 function readJsonSafe(filePath, schema2) {
   try {
-    if (!existsSync72(filePath)) {
+    if (!existsSync74(filePath)) {
       return null;
     }
-    const content = readFileSync47(filePath, "utf-8");
+    const content = readFileSync49(filePath, "utf-8");
     const parsed = JSON.parse(content);
     const result = schema2.safeParse(parsed);
     if (!result.success) {
@@ -75460,7 +75639,7 @@ function writeJsonAtomic(filePath, data) {
     renameSync2(tempPath, filePath);
   } catch (error92) {
     try {
-      if (existsSync72(tempPath)) {
+      if (existsSync74(tempPath)) {
         unlinkSync12(tempPath);
       }
     } catch {}
@@ -75482,7 +75661,7 @@ function acquireLock(dirPath) {
   };
   const isStale = () => {
     try {
-      const lockContent = readFileSync47(lockPath, "utf-8");
+      const lockContent = readFileSync49(lockPath, "utf-8");
       const lockData = JSON.parse(lockContent);
       const lockAge = Date.now() - lockData.timestamp;
       return lockAge > STALE_LOCK_THRESHOLD_MS;
@@ -75520,9 +75699,9 @@ function acquireLock(dirPath) {
     acquired: true,
     release: () => {
       try {
-        if (!existsSync72(lockPath))
+        if (!existsSync74(lockPath))
           return;
-        const lockContent = readFileSync47(lockPath, "utf-8");
+        const lockContent = readFileSync49(lockPath, "utf-8");
         const lockData = JSON.parse(lockContent);
         if (lockData.id !== lockId)
           return;
@@ -75746,7 +75925,7 @@ Returns null if the task does not exist or the file is invalid.`,
 }
 // src/tools/task/task-list.ts
 import { join as join81 } from "path";
-import { existsSync as existsSync73, readdirSync as readdirSync20 } from "fs";
+import { existsSync as existsSync75, readdirSync as readdirSync20 } from "fs";
 function createTaskList(config4) {
   return tool({
     description: `List all active tasks with summary information.
@@ -75757,7 +75936,7 @@ Returns summary format: id, subject, status, owner, blockedBy (not full descript
     args: {},
     execute: async () => {
       const taskDir = getTaskDir(config4);
-      if (!existsSync73(taskDir)) {
+      if (!existsSync75(taskDir)) {
         return JSON.stringify({ tasks: [] });
       }
       const files = readdirSync20(taskDir).filter((f) => f.endsWith(".json") && f.startsWith("T-")).map((f) => f.replace(".json", ""));
@@ -77797,15 +77976,11 @@ function createContinuationHooks(args) {
   const stopContinuationGuard = isHookEnabled("stop-continuation-guard") ? safeHook("stop-continuation-guard", () => createStopContinuationGuardHook(ctx, {
     backgroundManager
   })) : null;
-  const gptPermissionContinuation = isHookEnabled("gpt-permission-continuation") ? safeHook("gpt-permission-continuation", () => createGptPermissionContinuationHook(ctx, {
-    isContinuationStopped: stopContinuationGuard?.isStopped
-  })) : null;
   const compactionContextInjector = isHookEnabled("compaction-context-injector") ? safeHook("compaction-context-injector", () => createCompactionContextInjector({ ctx, backgroundManager })) : null;
   const compactionTodoPreserver = isHookEnabled("compaction-todo-preserver") ? safeHook("compaction-todo-preserver", () => createCompactionTodoPreserverHook(ctx)) : null;
   const todoContinuationEnforcer = isHookEnabled("todo-continuation-enforcer") ? safeHook("todo-continuation-enforcer", () => createTodoContinuationEnforcer(ctx, {
     backgroundManager,
-    isContinuationStopped: stopContinuationGuard?.isStopped,
-    shouldSkipContinuation: (sessionID) => gptPermissionContinuation?.wasRecentlyInjected(sessionID) ?? false
+    isContinuationStopped: stopContinuationGuard?.isStopped
   })) : null;
   const unstableAgentBabysitter = isHookEnabled("unstable-agent-babysitter") ? safeHook("unstable-agent-babysitter", () => createUnstableAgentBabysitter({ ctx, backgroundManager, pluginConfig })) : null;
   if (sessionRecovery) {
@@ -77833,12 +78008,10 @@ function createContinuationHooks(args) {
     directory: ctx.directory,
     backgroundManager,
     isContinuationStopped: (sessionID) => stopContinuationGuard?.isStopped(sessionID) ?? false,
-    shouldSkipContinuation: (sessionID) => gptPermissionContinuation?.wasRecentlyInjected(sessionID) ?? false,
     agentOverrides: pluginConfig.agents,
     autoCommit: pluginConfig.start_work?.auto_commit
   })) : null;
   return {
-    gptPermissionContinuation,
     stopContinuationGuard,
     compactionContextInjector,
     compactionTodoPreserver,
@@ -78084,7 +78257,7 @@ var TERMINAL_TASK_TTL_MS = 30 * 60 * 1000;
 var MIN_STABILITY_TIME_MS2 = 10 * 1000;
 var DEFAULT_STALE_TIMEOUT_MS = 1200000;
 var DEFAULT_MESSAGE_STALENESS_TIMEOUT_MS = 1800000;
-var DEFAULT_MAX_TOOL_CALLS = 200;
+var DEFAULT_MAX_TOOL_CALLS = 4000;
 var DEFAULT_CIRCUIT_BREAKER_CONSECUTIVE_THRESHOLD = 20;
 var DEFAULT_CIRCUIT_BREAKER_ENABLED = true;
 var MIN_RUNTIME_BEFORE_STALE_MS = 30000;
@@ -78331,7 +78504,7 @@ function unregisterManagerForCleanup(manager) {
 }
 
 // src/features/background-agent/compaction-aware-message-resolver.ts
-import { readdirSync as readdirSync21, readFileSync as readFileSync48 } from "fs";
+import { readdirSync as readdirSync21, readFileSync as readFileSync50 } from "fs";
 import { join as join83 } from "path";
 function isCompactionAgent4(agent) {
   return agent?.trim().toLowerCase() === "compaction";
@@ -78411,7 +78584,7 @@ function findNearestMessageExcludingCompaction(messageDir, sessionID) {
     const messages = [];
     for (const file3 of files) {
       try {
-        const content = readFileSync48(join83(messageDir, file3), "utf-8");
+        const content = readFileSync50(join83(messageDir, file3), "utf-8");
         messages.push(JSON.parse(content));
       } catch {
         continue;
@@ -84055,7 +84228,7 @@ class StreamableHTTPClientTransport {
 }
 
 // src/features/mcp-oauth/storage.ts
-import { chmodSync as chmodSync2, existsSync as existsSync74, mkdirSync as mkdirSync15, readFileSync as readFileSync49, unlinkSync as unlinkSync13, writeFileSync as writeFileSync21 } from "fs";
+import { chmodSync as chmodSync2, existsSync as existsSync76, mkdirSync as mkdirSync15, readFileSync as readFileSync51, unlinkSync as unlinkSync13, writeFileSync as writeFileSync21 } from "fs";
 import { dirname as dirname23, join as join85 } from "path";
 var STORAGE_FILE_NAME = "mcp-oauth.json";
 function getMcpOauthStoragePath() {
@@ -84096,11 +84269,11 @@ function buildKey(serverHost, resource) {
 }
 function readStore() {
   const filePath = getMcpOauthStoragePath();
-  if (!existsSync74(filePath)) {
+  if (!existsSync76(filePath)) {
     return null;
   }
   try {
-    const content = readFileSync49(filePath, "utf-8");
+    const content = readFileSync51(filePath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -84110,7 +84283,7 @@ function writeStore(store2) {
   const filePath = getMcpOauthStoragePath();
   try {
     const dir = dirname23(filePath);
-    if (!existsSync74(dir)) {
+    if (!existsSync76(dir)) {
       mkdirSync15(dir, { recursive: true });
     }
     writeFileSync21(filePath, JSON.stringify(store2, null, 2), { encoding: "utf-8", mode: 384 });
@@ -87055,15 +87228,30 @@ function buildParallelDelegationSection(model, categories2) {
 **MANDATORY \u2014 for ANY implementation task:**
 
 1. **ALWAYS decompose** the task into independent work units. No exceptions. Even if the task "feels small", decompose it.
-2. **ALWAYS delegate** EACH unit to a \`deep\` or \`unspecified-high\` agent in parallel (\`run_in_background=true\`).
-3. **NEVER work sequentially.** If 4 independent units exist, spawn 4 agents simultaneously. Not 1 at a time. Not 2 then 2.
-4. **NEVER implement directly** when delegation is possible. You write prompts, not code.
+2. **ALWAYS produce an ownership plan** before parallel writes begin. Name bundles as \`O1\`, \`O2\`, \`O3\` and explicitly state which files/modules/entrypoints each bundle owns.
+3. **ALWAYS delegate** EACH unit to a \`deep\` or \`unspecified-high\` agent in parallel (\`run_in_background=true\`) only after ownership boundaries are explicit.
+4. **NEVER work sequentially.** If 4 independent units exist, spawn 4 agents simultaneously. Not 1 at a time. Not 2 then 2.
+5. **NEVER implement directly** when delegation is possible. You write prompts, not code.
+
+**Before launching a parallel wave, explicitly check for collisions:**
+- same file
+- same entrypoint
+- same shared config
+- same lockfile
+- same schema or migration
+- same route registry
+- same barrel/index export
+- same generated output
+- tests for the same feature area
+
+If any collision exists, merge the tasks into one ownership bundle or move one bundle to a later serial wave.
 
 **YOUR PROMPT TO EACH AGENT MUST INCLUDE:**
 - GOAL with explicit success criteria (what "done" looks like)
 - File paths and constraints (where to work, what not to touch)
 - Existing patterns to follow (reference specific files the agent should read)
 - Clear scope boundary (what is IN scope, what is OUT of scope)
+- Ownership bundle label and owned resources (e.g. \`Ownership Bundle: O2 -> src/api/*, route registry\`)
 
 **Vague delegation = failed delegation.** If your prompt to the subagent is shorter than 5 lines, it is too vague.
 
@@ -89138,6 +89326,8 @@ task(
 
 {{CATEGORY_SKILLS_DELEGATION_GUIDE}}
 
+{OWNERSHIP_PLANNER_SECTION}
+
 ## 6-Section Prompt Structure (MANDATORY)
 
 Every \`task()\` prompt MUST include ALL 6 sections:
@@ -89224,6 +89414,7 @@ TodoWrite([
    - Which tasks can run simultaneously?
    - Which have dependencies?
    - Which have file conflicts?
+5. Produce the Ownership Plan before launching any parallel write wave
 
 Output:
 \`\`\`
@@ -89231,6 +89422,12 @@ TASK ANALYSIS:
 - Total: [N], Remaining: [M]
 - Parallelizable Groups: [list]
 - Sequential Dependencies: [list]
+ 
+OWNERSHIP PLAN:
+- Bundles: [O1, O2, ...]
+- Collision Boundaries: [list]
+- Serial Waves: [Wave 1, Wave 2, ...]
+- Draft-Start Tasks: [list or none]
 \`\`\`
 
 ## Step 2: Initialize Notepad
@@ -89252,6 +89449,10 @@ Structure:
 
 ### 3.1 Check Parallelization
 If tasks can run in parallel:
+- Produce the Ownership Plan first
+- Name ownership bundles (O1, O2, ...)
+- Label each bundle as read-only or write-capable
+- Separate any collisions into serial waves before delegating
 - Prepare prompts for ALL parallelizable tasks
 - Invoke multiple \`task()\` in ONE message
 - Wait for all to complete
@@ -89414,6 +89615,12 @@ task(category="quick", load_skills=[], run_in_background=false, prompt="Task 2..
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 3...")
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 4...")
 \`\`\`
+
+**Ownership planner is REQUIRED before parallel writes**:
+- Bundle write-capable tasks as O1/O2/O3 with explicit owned files/modules
+- Mark read-only bundles explicitly
+- Move colliding bundles into later serial waves
+- Start draft-safe tasks early if they can gather context without writing
 
 **Background management**:
 - Collect results: \`background_output(task_id="...")\`
@@ -89608,6 +89815,8 @@ task(subagent_type="[agent]", load_skills=[], run_in_background=false, prompt=".
 
 {{CATEGORY_SKILLS_DELEGATION_GUIDE}}
 
+{OWNERSHIP_PLANNER_SECTION}
+
 ## 6-Section Prompt Structure (MANDATORY)
 
 Every \`task()\` prompt MUST include ALL 6 sections:
@@ -89690,6 +89899,7 @@ TodoWrite([
 2. Parse actionable **top-level** task checkboxes in \`## TODOs\` and \`## Final Verification Wave\`
    - Ignore nested checkboxes under Acceptance Criteria, Evidence, Definition of Done, and Final Checklist sections.
 3. Build parallelization map
+4. Produce the Ownership Plan before launching any parallel write wave
 
 Output format:
 \`\`\`
@@ -89697,6 +89907,12 @@ TASK ANALYSIS:
 - Total: [N], Remaining: [M]
 - Parallel Groups: [list]
 - Sequential: [list]
+
+OWNERSHIP PLAN:
+- Bundles: [O1, O2, ...]
+- Collision Boundaries: [list]
+- Serial Waves: [Wave 1, Wave 2, ...]
+- Draft-Start Tasks: [list or none]
 \`\`\`
 
 ## Step 2: Initialize Notepad
@@ -89710,7 +89926,7 @@ Structure: learnings.md, decisions.md, issues.md, problems.md
 ## Step 3: Execute Tasks
 
 ### 3.1 Parallelization Check
-- Parallel tasks \u2192 invoke multiple \`task()\` in ONE message
+- Parallel tasks \u2192 produce Ownership Plan first, then invoke multiple \`task()\` in ONE message
 - Sequential \u2192 process one at a time
 
 ### 3.2 Pre-Delegation (MANDATORY)
@@ -89844,6 +90060,12 @@ task(category="...", load_skills=[...], run_in_background=false, ...)
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 2...")
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 3...")
 \`\`\`
+
+**Ownership planner is REQUIRED before parallel writes**:
+- Bundle write-capable tasks as O1/O2/O3 with explicit owned files/modules
+- Mark read-only bundles explicitly
+- Move colliding bundles into later serial waves
+- Start draft-safe tasks early if they can gather context without writing
 
 **Background management**:
 - Collect: \`background_output(task_id="...")\`
@@ -90014,6 +90236,8 @@ task(subagent_type="[agent]", load_skills=[], run_in_background=false, prompt=".
 
 {{CATEGORY_SKILLS_DELEGATION_GUIDE}}
 
+{OWNERSHIP_PLANNER_SECTION}
+
 ## 6-Section Prompt Structure (MANDATORY)
 
 Every \`task()\` prompt MUST include ALL 6 sections:
@@ -90096,6 +90320,7 @@ TodoWrite([
 2. Parse actionable **top-level** task checkboxes in \`## TODOs\` and \`## Final Verification Wave\`
    - Ignore nested checkboxes under Acceptance Criteria, Evidence, Definition of Done, and Final Checklist sections.
 3. Build parallelization map
+4. Produce the Ownership Plan before launching any parallel write wave
 
 Output format:
 \`\`\`
@@ -90103,6 +90328,12 @@ TASK ANALYSIS:
 - Total: [N], Remaining: [M]
 - Parallel Groups: [list]
 - Sequential: [list]
+
+OWNERSHIP PLAN:
+- Bundles: [O1, O2, ...]
+- Collision Boundaries: [list]
+- Serial Waves: [Wave 1, Wave 2, ...]
+- Draft-Start Tasks: [list or none]
 \`\`\`
 
 ## Step 2: Initialize Notepad
@@ -90116,7 +90347,7 @@ Structure: learnings.md, decisions.md, issues.md, problems.md
 ## Step 3: Execute Tasks
 
 ### 3.1 Parallelization Check
-- Parallel tasks \u2192 invoke multiple \`task()\` in ONE message
+- Parallel tasks \u2192 produce Ownership Plan first, then invoke multiple \`task()\` in ONE message
 - Sequential \u2192 process one at a time
 
 ### 3.2 Pre-Delegation (MANDATORY)
@@ -90255,6 +90486,12 @@ task(category="...", load_skills=[...], run_in_background=false, ...)
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 2...")
 task(category="quick", load_skills=[], run_in_background=false, prompt="Task 3...")
 \`\`\`
+
+**Ownership planner is REQUIRED before parallel writes**:
+- Bundle write-capable tasks as O1/O2/O3 with explicit owned files/modules
+- Mark read-only bundles explicitly
+- Move colliding bundles into later serial waves
+- Start draft-safe tasks early if they can gather context without writing
 
 **Background management**:
 - Collect: \`background_output(task_id="...")\`
@@ -90442,6 +90679,49 @@ ${agentRows.join(`
 
 **NEVER provide both category AND agent - they are mutually exclusive.**`;
 }
+function buildOwnershipPlannerSection() {
+  return `## Ownership Planner (MANDATORY for multi-task execution)
+
+Before any parallel implementation wave, you MUST produce a semi-structured ownership plan.
+
+### Required Planning Output
+
+\`\`\`text
+OWNERSHIP PLAN:
+- Bundles:
+  - O1: [task ids] -> [owned files/modules/entrypoints]
+  - O2: [task ids] -> [owned files/modules/entrypoints]
+- Collision boundaries:
+  - [shared file/config/schema/test area]
+- Serial waves:
+  - Wave 1: [bundles]
+  - Wave 2: [bundles]
+- Draft-start tasks:
+  - D1: [task] can start now because [independent context]
+\`\`\`
+
+### Non-Negotiable Rules
+
+- Every write-capable task MUST belong to exactly one ownership bundle.
+- Every ownership bundle MUST name the files, modules, entrypoints, or shared resources it owns.
+- If two tasks touch the same shared resource, they MUST be merged into one bundle or separated into serial waves.
+- Read-only tasks may overlap on files, but you MUST label them explicitly as read-only.
+- If a task can start as a draft before prerequisites finish, mark it as a draft-start task and keep the same session/thread for continuation.
+
+### Collision Boundaries You Must Check
+
+- same file
+- same entrypoint
+- same shared config
+- same lockfile
+- same schema or migration
+- same route registry
+- same barrel/index export
+- same generated output
+- tests for the same feature area
+
+If you cannot produce this ownership plan, you are NOT ready to launch a parallel wave.`;
+}
 
 // src/agents/atlas/agent.ts
 var MODE7 = "all";
@@ -90481,8 +90761,9 @@ function buildDynamicOrchestratorPrompt(ctx) {
   const decisionMatrix = buildDecisionMatrix(agents, userCategories);
   const skillsSection = buildSkillsSection(skills2);
   const categorySkillsGuide = buildCategorySkillsDelegationGuide(availableCategories, skills2);
+  const ownershipPlannerSection = buildOwnershipPlannerSection();
   const basePrompt = getAtlasPrompt(model);
-  return basePrompt.replace("{CATEGORY_SECTION}", categorySection).replace("{AGENT_SECTION}", agentSection).replace("{DECISION_MATRIX}", decisionMatrix).replace("{SKILLS_SECTION}", skillsSection).replace("{{CATEGORY_SKILLS_DELEGATION_GUIDE}}", categorySkillsGuide);
+  return basePrompt.replace("{CATEGORY_SECTION}", categorySection).replace("{AGENT_SECTION}", agentSection).replace("{DECISION_MATRIX}", decisionMatrix).replace("{SKILLS_SECTION}", skillsSection).replace("{{CATEGORY_SKILLS_DELEGATION_GUIDE}}", categorySkillsGuide).replace("{OWNERSHIP_PLANNER_SECTION}", ownershipPlannerSection);
 }
 function createAtlasAgent(ctx) {
   const baseConfig = {
@@ -92009,7 +92290,7 @@ function createHephaestusAgent2(model, availableAgents, availableToolNames, avai
 }
 createHephaestusAgent2.mode = MODE10;
 // src/agents/builtin-agents/resolve-file-uri.ts
-import { existsSync as existsSync75, readFileSync as readFileSync50 } from "fs";
+import { existsSync as existsSync77, readFileSync as readFileSync52 } from "fs";
 import { homedir as homedir14 } from "os";
 import { isAbsolute as isAbsolute9, resolve as resolve15 } from "path";
 function resolvePromptAppend(promptAppend, configDir) {
@@ -92024,11 +92305,11 @@ function resolvePromptAppend(promptAppend, configDir) {
   } catch {
     return `[WARNING: Malformed file URI (invalid percent-encoding): ${promptAppend}]`;
   }
-  if (!existsSync75(filePath)) {
+  if (!existsSync77(filePath)) {
     return `[WARNING: Could not resolve file URI: ${promptAppend}]`;
   }
   try {
-    return readFileSync50(filePath, "utf8");
+    return readFileSync52(filePath, "utf8");
   } catch {
     return `[WARNING: Could not read file: ${promptAppend}]`;
   }
@@ -93294,7 +93575,7 @@ async function createBuiltinAgents(disabledAgents = [], agentOverrides = {}, dir
   return result;
 }
 // src/features/claude-code-agent-loader/loader.ts
-import { existsSync as existsSync76, readdirSync as readdirSync22, readFileSync as readFileSync51 } from "fs";
+import { existsSync as existsSync78, readdirSync as readdirSync22, readFileSync as readFileSync53 } from "fs";
 import { join as join86, basename as basename10 } from "path";
 function parseToolsConfig2(toolsStr) {
   if (!toolsStr)
@@ -93309,7 +93590,7 @@ function parseToolsConfig2(toolsStr) {
   return result;
 }
 function loadAgentsFromDir(agentsDir, scope) {
-  if (!existsSync76(agentsDir)) {
+  if (!existsSync78(agentsDir)) {
     return [];
   }
   const entries = readdirSync22(agentsDir, { withFileTypes: true });
@@ -93320,7 +93601,7 @@ function loadAgentsFromDir(agentsDir, scope) {
     const agentPath = join86(agentsDir, entry.name);
     const agentName = basename10(entry.name, ".md");
     try {
-      const content = readFileSync51(agentPath, "utf-8");
+      const content = readFileSync53(agentPath, "utf-8");
       const { data, body } = parseFrontmatter(content);
       const name = data.name || agentName;
       const originalDescription = data.description || "";
@@ -94523,6 +94804,30 @@ Max Concurrent: 7 (Waves 1 & 2)
 - **3**: **6** \u2014 T15 \u2192 \`deep\`, T16 \u2192 \`visual-engineering\`, T17-T19 \u2192 \`quick\`, T20 \u2192 \`visual-engineering\`
 - **4**: **4** \u2014 T21 \u2192 \`deep\`, T22 \u2192 \`unspecified-high\`, T23 \u2192 \`deep\`, T24 \u2192 \`git\`
 - **FINAL**: **4** \u2014 F1 \u2192 \`oracle\`, F2 \u2192 \`unspecified-high\`, F3 \u2192 \`unspecified-high\`, F4 \u2192 \`deep\`
+
+### Ownership Plan (MANDATORY for parallel execution)
+
+> This section is REQUIRED whenever the plan contains parallel work.
+> Use explicit ownership bundle IDs so downstream orchestration can tell which tasks may write concurrently and which must be serialized.
+> Read-only work may overlap on files, but write-capable work must have disjoint ownership or separate waves.
+
+\`\`\`text
+Bundles:
+- O1 (write-capable): T1, T2 -> src/api/*, route registry
+- O2 (read-only): T3, T4 -> repo docs + tests audit
+- O3 (write-capable): T5 -> src/ui/*, generated assets
+
+Collision Boundaries:
+- src/routes/index.ts shared by O1 and O3 -> serialize final integration
+- tests/auth/* shared by T1 and T6 -> same wave forbidden
+
+Serial Waves:
+- Wave 1: O1, O2
+- Wave 2: O3
+
+Draft-Start Tasks:
+- D1: T7 can start as read-only research before O1 finishes
+\`\`\`
 
 ---
 
@@ -95972,7 +96277,7 @@ function remapCommandAgentFields(commands3) {
   }
 }
 // src/features/claude-code-mcp-loader/loader.ts
-import { existsSync as existsSync77, readFileSync as readFileSync52 } from "fs";
+import { existsSync as existsSync79, readFileSync as readFileSync54 } from "fs";
 import { join as join88 } from "path";
 import { homedir as homedir15 } from "os";
 init_logger();
@@ -95987,7 +96292,7 @@ function getMcpConfigPaths() {
   ];
 }
 async function loadMcpConfigFile(filePath) {
-  if (!existsSync77(filePath)) {
+  if (!existsSync79(filePath)) {
     return null;
   }
   try {
@@ -96002,10 +96307,10 @@ function getSystemMcpServerNames() {
   const names = new Set;
   const paths = getMcpConfigPaths();
   for (const { path: path12 } of paths) {
-    if (!existsSync77(path12))
+    if (!existsSync79(path12))
       continue;
     try {
-      const content = readFileSync52(path12, "utf-8");
+      const content = readFileSync54(path12, "utf-8");
       const config4 = JSON.parse(content);
       if (!config4?.mcpServers)
         continue;
@@ -96821,7 +97126,7 @@ function createChatHeadersHandler(args) {
 // src/plugin/ultrawork-db-model-override.ts
 import { Database } from "bun:sqlite";
 import { join as join89 } from "path";
-import { existsSync as existsSync78 } from "fs";
+import { existsSync as existsSync80 } from "fs";
 function getDbPath() {
   return join89(getDataDir(), "opencode", "opencode.db");
 }
@@ -96900,7 +97205,7 @@ function retryViaMicrotask(db, messageId, targetModel, variant, attempt) {
 function scheduleDeferredModelOverride(messageId, targetModel, variant) {
   queueMicrotask(() => {
     const dbPath = getDbPath();
-    if (!existsSync78(dbPath)) {
+    if (!existsSync80(dbPath)) {
       log("[ultrawork-db-override] DB not found, skipping deferred override");
       return;
     }
@@ -97331,7 +97636,6 @@ function createEventHandler2(args) {
     await Promise.resolve(hooks2.claudeCodeHooks?.event?.(input));
     await Promise.resolve(hooks2.backgroundNotificationHook?.event?.(input));
     await Promise.resolve(hooks2.sessionNotification?.(input));
-    await Promise.resolve(hooks2.gptPermissionContinuation?.handler?.(input));
     await Promise.resolve(hooks2.todoContinuationEnforcer?.handler?.(input));
     await Promise.resolve(hooks2.unstableAgentBabysitter?.event?.(input));
     await Promise.resolve(hooks2.contextWindowMonitor?.event?.(input));
@@ -97610,6 +97914,15 @@ function createEventHandler2(args) {
 
 // src/plugin/tool-execute-after.ts
 var VERIFICATION_ATTEMPT_PATTERN = /<ulw_verification_attempt_id>(.*?)<\/ulw_verification_attempt_id>/i;
+function getMetadataString(metadata, keys) {
+  for (const key of keys) {
+    const value = metadata?.[key];
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  return;
+}
 function getPluginDirectory(ctx) {
   if (typeof ctx === "object" && ctx !== null && "directory" in ctx && typeof ctx.directory === "string") {
     return ctx.directory;
@@ -97632,9 +97945,9 @@ function createToolExecuteAfterHandler3(args) {
     }
     if (input.tool === "task") {
       const directory = getPluginDirectory(ctx);
-      const sessionId = typeof output.metadata?.sessionId === "string" ? output.metadata.sessionId : undefined;
-      const agent = typeof output.metadata?.agent === "string" ? output.metadata.agent : undefined;
-      const prompt = typeof output.metadata?.prompt === "string" ? output.metadata.prompt : undefined;
+      const sessionId = getMetadataString(output.metadata, ["sessionId", "sessionID", "session_id"]);
+      const agent = getMetadataString(output.metadata, ["agent"]);
+      const prompt = getMetadataString(output.metadata, ["prompt"]);
       const verificationAttemptId = prompt?.match(VERIFICATION_ATTEMPT_PATTERN)?.[1]?.trim();
       const loopState = directory ? readState(directory) : null;
       const isVerificationContext = agent === "oracle" && !!sessionId && !!directory && loopState?.active === true && loopState.ultrawork === true && loopState.verification_pending === true && loopState.session_id === input.sessionID;
@@ -97741,6 +98054,27 @@ async function resolveSessionAgent(client2, sessionId) {
 // src/plugin/tool-execute-before.ts
 function createToolExecuteBeforeHandler3(args) {
   const { ctx, hooks: hooks2 } = args;
+  function buildUltraworkOracleVerificationPrompt(prompt, originalTask, verificationAttemptId) {
+    const verificationPrompt = [
+      "You are verifying the active ULTRAWORK loop result for this session.",
+      "",
+      "Original task:",
+      originalTask,
+      "",
+      "Review the work skeptically and critically.",
+      "Assume it may be incomplete, misleading, or subtly broken until the evidence proves otherwise.",
+      "Look for missing scope, weak verification, process violations, hidden regressions, and any reason the task should NOT be considered complete.",
+      "",
+      `If the work is fully complete, end your response with <promise>${ULTRAWORK_VERIFICATION_PROMISE}</promise>.`,
+      "If the work is not complete, explain the blocking issues clearly and DO NOT emit that promise.",
+      "",
+      `<ulw_verification_attempt_id>${verificationAttemptId}</ulw_verification_attempt_id>`
+    ].join(`
+`);
+    return `${prompt ? `${prompt}
+
+` : ""}${verificationPrompt}`;
+  }
   return async (input, output) => {
     await hooks2.writeExistingFileGuard?.["tool.execute.before"]?.(input, output);
     await hooks2.questionLabelTruncator?.["tool.execute.before"]?.(input, output);
@@ -97797,13 +98131,7 @@ function createToolExecuteBeforeHandler3(args) {
           verification_session_id: undefined
         });
         argsObject.run_in_background = false;
-        argsObject.prompt = `${prompt ? `${prompt}
-
-` : ""}You are verifying the active ULTRAWORK loop result for this session. Review whether the original task is truly complete: ${loopState.prompt}
-
-If the work is fully complete, end your response with <promise>${ULTRAWORK_VERIFICATION_PROMISE}</promise>. If the work is not complete, explain the blocking issues clearly and DO NOT emit that promise.
-
-<ulw_verification_attempt_id>${verificationAttemptId}</ulw_verification_attempt_id>`;
+        argsObject.prompt = buildUltraworkOracleVerificationPrompt(prompt, loopState.prompt, verificationAttemptId);
       }
     }
     if (hooks2.ralphLoop && input.tool === "skill") {

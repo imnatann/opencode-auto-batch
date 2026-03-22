@@ -4,7 +4,6 @@ export interface TodoContinuationEnforcerOptions {
     backgroundManager?: BackgroundManager;
     skipAgents?: string[];
     isContinuationStopped?: (sessionID: string) => boolean;
-    shouldSkipContinuation?: (sessionID: string) => boolean;
 }
 export interface TodoContinuationEnforcer {
     handler: (input: {

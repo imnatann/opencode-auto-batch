@@ -3,12 +3,21 @@
  *
  * Handles reading/writing boulder.json for active plan tracking.
  */
-import type { BoulderState, PlanProgress } from "./types";
+import type { BoulderState, PlanProgress, TaskSessionState } from "./types";
 export declare function getBoulderFilePath(directory: string): string;
 export declare function readBoulderState(directory: string): BoulderState | null;
 export declare function writeBoulderState(directory: string, state: BoulderState): boolean;
 export declare function appendSessionId(directory: string, sessionId: string): BoulderState | null;
 export declare function clearBoulderState(directory: string): boolean;
+export declare function getTaskSessionState(directory: string, taskKey: string): TaskSessionState | null;
+export declare function upsertTaskSessionState(directory: string, input: {
+    taskKey: string;
+    taskLabel: string;
+    taskTitle: string;
+    sessionId: string;
+    agent?: string;
+    category?: string;
+}): BoulderState | null;
 /**
  * Find Prometheus plan files for this project.
  * Prometheus stores plans at: {project}/.sisyphus/plans/{name}.md

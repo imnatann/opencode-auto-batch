@@ -6052,7 +6052,8 @@ var init_hook_names = __esm(() => {
     "sisyphus-orchestrator": "atlas",
     "sisyphus-gpt-hephaestus-reminder": "no-sisyphus-gpt",
     "empty-message-sanitizer": null,
-    "delegate-task-english-directive": null
+    "delegate-task-english-directive": null,
+    "gpt-permission-continuation": null
   };
 });
 
@@ -6555,6 +6556,10 @@ var init_model_requirements = __esm(() => {
     },
     quick: {
       fallbackChain: [
+        {
+          providers: ["openai", "github-copilot", "opencode"],
+          model: "gpt-5.4-mini"
+        },
         {
           providers: ["anthropic", "github-copilot", "opencode"],
           model: "claude-haiku-4-5"
@@ -7157,7 +7162,7 @@ var init_session_category_registry = __esm(() => {
 });
 
 // src/shared/plugin-identity.ts
-var PLUGIN_NAME = "oh-my-opencode", LEGACY_PLUGIN_NAME = "oh-my-openagent";
+var PLUGIN_NAME = "opencode-auto-batch", LEGACY_PLUGIN_NAME = "oh-my-opencode";
 
 // src/shared/index.ts
 var init_shared = __esm(() => {
@@ -7488,7 +7493,7 @@ var init_openai_only_model_catalog = __esm(() => {
   };
   OPENAI_ONLY_CATEGORY_OVERRIDES = {
     artistry: { model: "openai/gpt-5.4", variant: "xhigh" },
-    quick: { model: "openai/gpt-5.3-codex", variant: "low" },
+    quick: { model: "openai/gpt-5.4-mini" },
     "visual-engineering": { model: "openai/gpt-5.4", variant: "high" },
     writing: { model: "openai/gpt-5.4", variant: "medium" }
   };
@@ -8940,26 +8945,21 @@ var {
 } = import__.default;
 // package.json
 var package_default = {
-  name: "oh-my-opencode",
-  version: "3.12.3",
-  description: "The Best AI Agent Harness - Batteries-Included OpenCode Plugin with Multi-Model Orchestration, Parallel Background Agents, and Crafted LSP/AST Tools",
+  name: "opencode-auto-batch",
+  version: "0.1.0",
+  description: "Standalone OpenCode plugin with auto-batch routing, parallel task orchestration, and multi-in-progress todo visibility",
   main: "dist/index.js",
   types: "dist/index.d.ts",
   type: "module",
-  bin: {
-    "oh-my-opencode": "bin/oh-my-opencode.js"
-  },
   files: [
-    "dist",
-    "bin",
-    "postinstall.mjs"
+    "dist"
   ],
   exports: {
     ".": {
       types: "./dist/index.d.ts",
       import: "./dist/index.js"
     },
-    "./schema.json": "./dist/oh-my-opencode.schema.json"
+    "./schema.json": "./dist/opencode-auto-batch.schema.json"
   },
   scripts: {
     build: "bun build src/index.ts --outdir dist --target bun --format esm --external @ast-grep/napi && tsc --emitDeclarationOnly && bun build src/cli/index.ts --outdir dist/cli --target bun --format esm --external @ast-grep/napi && bun run build:schema",
@@ -8967,8 +8967,7 @@ var package_default = {
     "build:binaries": "bun run script/build-binaries.ts",
     "build:schema": "bun run script/build-schema.ts",
     clean: "rm -rf dist",
-    prepare: "bun run build",
-    postinstall: "node postinstall.mjs",
+    prepare: `node -e "console.log('prepare: using bundled dist')"`,
     prepublishOnly: "bun run clean && bun run build",
     typecheck: "tsc --noEmit",
     test: "bun test"
@@ -8982,16 +8981,19 @@ var package_default = {
     "ai",
     "llm"
   ],
-  author: "YeonGyu-Kim",
+  author: "tokaf",
   license: "SUL-1.0",
   repository: {
     type: "git",
-    url: "git+https://github.com/code-yeongyu/oh-my-openagent.git"
+    url: "git+https://github.com/imnatann/opencode-auto-batch.git"
   },
   bugs: {
-    url: "https://github.com/code-yeongyu/oh-my-openagent/issues"
+    url: "https://github.com/imnatann/opencode-auto-batch/issues"
   },
-  homepage: "https://github.com/code-yeongyu/oh-my-openagent#readme",
+  homepage: "https://github.com/imnatann/opencode-auto-batch#readme",
+  publishConfig: {
+    access: "public"
+  },
   dependencies: {
     "@ast-grep/cli": "^0.41.1",
     "@ast-grep/napi": "^0.41.1",
@@ -9016,19 +9018,6 @@ var package_default = {
     "bun-types": "1.3.10",
     typescript: "^5.7.3"
   },
-  optionalDependencies: {
-    "oh-my-opencode-darwin-arm64": "3.12.3",
-    "oh-my-opencode-darwin-x64": "3.12.3",
-    "oh-my-opencode-darwin-x64-baseline": "3.12.3",
-    "oh-my-opencode-linux-arm64": "3.12.3",
-    "oh-my-opencode-linux-arm64-musl": "3.12.3",
-    "oh-my-opencode-linux-x64": "3.12.3",
-    "oh-my-opencode-linux-x64-baseline": "3.12.3",
-    "oh-my-opencode-linux-x64-musl": "3.12.3",
-    "oh-my-opencode-linux-x64-musl-baseline": "3.12.3",
-    "oh-my-opencode-windows-x64": "3.12.3",
-    "oh-my-opencode-windows-x64-baseline": "3.12.3"
-  },
   overrides: {
     "@opencode-ai/sdk": "^1.2.24"
   },
@@ -9041,6 +9030,7 @@ var package_default = {
 
 // src/cli/cli-installer.ts
 init_config_manager();
+init_config_context();
 var import_picocolors2 = __toESM(require_picocolors(), 1);
 
 // src/cli/install-validators.ts
@@ -9198,7 +9188,7 @@ async function runCliInstaller(args, version) {
       console.log(`  ${SYMBOLS.bullet} ${err}`);
     }
     console.log();
-    printInfo("Usage: bunx oh-my-opencode install --no-tui --claude=<no|yes|max20> --gemini=<no|yes> --copilot=<no|yes>");
+    printInfo("Usage: bunx opencode-auto-batch install --no-tui --claude=<no|yes|max20> --gemini=<no|yes> --copilot=<no|yes>");
     console.log();
     return 1;
   }
@@ -9221,14 +9211,14 @@ async function runCliInstaller(args, version) {
     printInfo(`Current config: Claude=${initial.claude}, Gemini=${initial.gemini}`);
   }
   const config = argsToConfig(args);
-  printStep(step++, totalSteps, "Adding oh-my-opencode plugin...");
+  printStep(step++, totalSteps, "Adding opencode-auto-batch plugin...");
   const pluginResult = await addPluginToOpenCodeConfig(version);
   if (!pluginResult.success) {
     printError(`Failed: ${pluginResult.error}`);
     return 1;
   }
   printSuccess(`Plugin ${isUpdate ? "verified" : "added"} ${SYMBOLS.arrow} ${import_picocolors2.default.dim(pluginResult.configPath)}`);
-  printStep(step++, totalSteps, "Writing oh-my-opencode configuration...");
+  printStep(step++, totalSteps, "Writing runtime configuration...");
   const omoResult = writeOmoConfig(config);
   if (!omoResult.success) {
     printError(`Failed: ${omoResult.error}`);
@@ -9236,6 +9226,8 @@ async function runCliInstaller(args, version) {
   }
   printSuccess(`Config written ${SYMBOLS.arrow} ${import_picocolors2.default.dim(omoResult.configPath)}`);
   printBox(formatConfigSummary(config), isUpdate ? "Updated Configuration" : "Installation Complete");
+  printInfo(`Runtime config path: ${getOmoConfigPath()}`);
+  printInfo(`After provider login, reopen ${import_picocolors2.default.cyan("opencode")} once so connected-provider cache and runtime checks can refresh.`);
   if (!config.hasClaude) {
     console.log();
     console.log(import_picocolors2.default.bgRed(import_picocolors2.default.white(import_picocolors2.default.bold(" CRITICAL WARNING "))));
@@ -9258,9 +9250,6 @@ async function runCliInstaller(args, version) {
   printBox(`${import_picocolors2.default.bold("Pro Tip:")} Include ${import_picocolors2.default.cyan("ultrawork")} (or ${import_picocolors2.default.cyan("ulw")}) in your prompt.
 ` + `All features work like magic\u2014parallel agents, background tasks,
 ` + `deep exploration, and relentless execution until completion.`, "The Magic Word");
-  console.log(`${SYMBOLS.star} ${import_picocolors2.default.yellow("If you found this helpful, consider starring the repo!")}`);
-  console.log(`  ${import_picocolors2.default.dim("gh api --silent --method PUT /user/starred/code-yeongyu/oh-my-openagent >/dev/null 2>&1 || true")}`);
-  console.log();
   console.log(import_picocolors2.default.dim("oMoMoMoMo... Enjoy!"));
   console.log();
   if ((config.hasClaude || config.hasGemini || config.hasCopilot) && !args.skipAuth) {
@@ -9854,6 +9843,7 @@ var Y2 = ({ indicator: t = "dots" } = {}) => {
 
 // src/cli/tui-installer.ts
 init_config_manager();
+init_config_context();
 var import_picocolors4 = __toESM(require_picocolors(), 1);
 
 // src/cli/tui-install-prompts.ts
@@ -9994,7 +9984,7 @@ async function runTuiInstaller(args, version) {
   const config = await promptInstallConfig(detected);
   if (!config)
     return 1;
-  spinner.start("Adding oh-my-opencode to OpenCode config");
+  spinner.start("Adding opencode-auto-batch to OpenCode config");
   const pluginResult = await addPluginToOpenCodeConfig(version);
   if (!pluginResult.success) {
     spinner.stop(`Failed to add plugin: ${pluginResult.error}`);
@@ -10002,7 +9992,7 @@ async function runTuiInstaller(args, version) {
     return 1;
   }
   spinner.stop(`Plugin added to ${import_picocolors4.default.cyan(pluginResult.configPath)}`);
-  spinner.start("Writing oh-my-opencode configuration");
+  spinner.start("Writing runtime configuration");
   const omoResult = writeOmoConfig(config);
   if (!omoResult.success) {
     spinner.stop(`Failed to write config: ${omoResult.error}`);
@@ -10027,13 +10017,13 @@ async function runTuiInstaller(args, version) {
     M2.warn("No model providers configured. Using opencode/big-pickle as fallback.");
   }
   Me(formatConfigSummary(config), isUpdate ? "Updated Configuration" : "Installation Complete");
+  M2.info(`Runtime config path: ${getOmoConfigPath()}`);
+  M2.message(`After provider login, reopen ${import_picocolors4.default.cyan("opencode")} once so connected-provider cache and runtime checks can refresh.`);
   M2.success(import_picocolors4.default.bold(isUpdate ? "Configuration updated!" : "Installation complete!"));
   M2.message(`Run ${import_picocolors4.default.cyan("opencode")} to start!`);
   Me(`Include ${import_picocolors4.default.cyan("ultrawork")} (or ${import_picocolors4.default.cyan("ulw")}) in your prompt.
 ` + `All features work like magic\u2014parallel agents, background tasks,
 ` + `deep exploration, and relentless execution until completion.`, "The Magic Word");
-  M2.message(`${import_picocolors4.default.yellow("\u2605")} If you found this helpful, consider starring the repo!`);
-  M2.message(`  ${import_picocolors4.default.dim("gh api --silent --method PUT /user/starred/code-yeongyu/oh-my-openagent >/dev/null 2>&1 || true")}`);
   Se(import_picocolors4.default.green("oMoMoMoMo... Enjoy!"));
   if ((config.hasClaude || config.hasGemini || config.hasCopilot) && !args.skipAuth) {
     const providers = [];
@@ -24551,7 +24541,6 @@ var GitMasterConfigSchema = exports_external.object({
 });
 // src/config/schema/hooks.ts
 var HookNameSchema = exports_external.enum([
-  "gpt-permission-continuation",
   "todo-continuation-enforcer",
   "context-window-monitor",
   "session-recovery",
@@ -24608,6 +24597,39 @@ var NotificationConfigSchema = exports_external.object({
 // src/mcp/types.ts
 var McpNameSchema = exports_external.enum(["websearch", "context7", "grep_app"]);
 var AnyMcpNameSchema = exports_external.string().min(1);
+
+// src/config/schema/openclaw.ts
+var OpenClawGatewaySchema = exports_external.object({
+  type: exports_external.enum(["http", "command"]).default("http"),
+  url: exports_external.string().optional(),
+  method: exports_external.string().default("POST"),
+  headers: exports_external.record(exports_external.string(), exports_external.string()).optional(),
+  command: exports_external.string().optional(),
+  timeout: exports_external.number().optional()
+});
+var OpenClawHookSchema = exports_external.object({
+  enabled: exports_external.boolean().default(true),
+  gateway: exports_external.string(),
+  instruction: exports_external.string()
+});
+var OpenClawReplyListenerConfigSchema = exports_external.object({
+  discordBotToken: exports_external.string().optional(),
+  discordChannelId: exports_external.string().optional(),
+  discordMention: exports_external.string().optional(),
+  authorizedDiscordUserIds: exports_external.array(exports_external.string()).default([]),
+  telegramBotToken: exports_external.string().optional(),
+  telegramChatId: exports_external.string().optional(),
+  pollIntervalMs: exports_external.number().default(3000),
+  rateLimitPerMinute: exports_external.number().default(10),
+  maxMessageLength: exports_external.number().default(500),
+  includePrefix: exports_external.boolean().default(true)
+});
+var OpenClawConfigSchema = exports_external.object({
+  enabled: exports_external.boolean().default(false),
+  gateways: exports_external.record(exports_external.string(), OpenClawGatewaySchema).default({}),
+  hooks: exports_external.record(exports_external.string(), OpenClawHookSchema).default({}),
+  replyListener: OpenClawReplyListenerConfigSchema.optional()
+});
 
 // src/config/schema/ralph-loop.ts
 var RalphLoopConfigSchema = exports_external.object({
@@ -24730,6 +24752,7 @@ var OhMyOpenCodeConfigSchema = exports_external.object({
   runtime_fallback: exports_external.union([exports_external.boolean(), RuntimeFallbackConfigSchema]).optional(),
   background_task: BackgroundTaskConfigSchema.optional(),
   notification: NotificationConfigSchema.optional(),
+  openclaw: OpenClawConfigSchema.optional(),
   babysitting: BabysittingConfigSchema.optional(),
   git_master: GitMasterConfigSchema.optional(),
   browser_automation_engine: BrowserAutomationConfigSchema.optional(),
@@ -26722,6 +26745,7 @@ var NOTEPAD_BASE_PATH = `${BOULDER_DIR}/${NOTEPAD_DIR}`;
 // src/features/boulder-state/storage.ts
 import { existsSync as existsSync11, readFileSync as readFileSync9, writeFileSync as writeFileSync5, mkdirSync as mkdirSync3, readdirSync } from "fs";
 import { dirname as dirname2, join as join9, basename } from "path";
+var RESERVED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 function getBoulderFilePath(directory) {
   return join9(directory, BOULDER_DIR, BOULDER_FILE);
 }
@@ -26738,6 +26762,9 @@ function readBoulderState(directory) {
     }
     if (!Array.isArray(parsed.session_ids)) {
       parsed.session_ids = [];
+    }
+    if (!parsed.task_sessions || typeof parsed.task_sessions !== "object" || Array.isArray(parsed.task_sessions)) {
+      parsed.task_sessions = {};
     }
     return parsed;
   } catch {
@@ -27227,6 +27254,7 @@ async function waitForEventProcessorShutdown(eventProcessor, timeoutMs = EVENT_P
 }
 async function run(options) {
   process.env.OPENCODE_CLI_RUN_MODE = "true";
+  process.env.OPENCODE_CLIENT = "run";
   const startTime = Date.now();
   const {
     message,
@@ -27353,7 +27381,7 @@ var SYMBOLS2 = {
 function formatVersionOutput(info) {
   const lines = [];
   lines.push("");
-  lines.push(import_picocolors15.default.bold(import_picocolors15.default.white("oh-my-opencode Version Information")));
+  lines.push(import_picocolors15.default.bold(import_picocolors15.default.white("opencode-auto-batch Version Information")));
   lines.push(import_picocolors15.default.dim("\u2500".repeat(50)));
   lines.push("");
   if (info.currentVersion) {
@@ -27371,7 +27399,7 @@ function formatVersionOutput(info) {
       break;
     case "outdated":
       lines.push(`  ${SYMBOLS2.warn} ${import_picocolors15.default.yellow("Update available")}`);
-      lines.push(`  ${import_picocolors15.default.dim("Run:")} ${import_picocolors15.default.cyan("cd ~/.config/opencode && bun update oh-my-opencode")}`);
+      lines.push(`  ${import_picocolors15.default.dim("Run:")} ${import_picocolors15.default.cyan("cd ~/.config/opencode && npm install ../opencode-auto-batch")}`);
       break;
     case "local-dev":
       lines.push(`  ${SYMBOLS2.dev} ${import_picocolors15.default.cyan("Running in local development mode")}`);
@@ -27486,6 +27514,7 @@ async function getLocalVersion(options = {}) {
   }
 }
 // src/cli/doctor/constants.ts
+init_shared();
 var import_picocolors16 = __toESM(require_picocolors(), 1);
 var SYMBOLS3 = {
   check: import_picocolors16.default.green("\u2713"),
@@ -27506,20 +27535,22 @@ var CHECK_IDS = {
   SYSTEM: "system",
   CONFIG: "config",
   TOOLS: "tools",
-  MODELS: "models"
+  MODELS: "models",
+  PROVIDERS: "providers"
 };
 var CHECK_NAMES = {
   [CHECK_IDS.SYSTEM]: "System",
   [CHECK_IDS.CONFIG]: "Configuration",
   [CHECK_IDS.TOOLS]: "Tools",
-  [CHECK_IDS.MODELS]: "Models"
+  [CHECK_IDS.MODELS]: "Models",
+  [CHECK_IDS.PROVIDERS]: "Providers"
 };
 var EXIT_CODES = {
   SUCCESS: 0,
   FAILURE: 1
 };
 var MIN_OPENCODE_VERSION = "1.0.150";
-var PACKAGE_NAME2 = "oh-my-opencode";
+var PACKAGE_NAME2 = PLUGIN_NAME;
 var OPENCODE_BINARIES2 = ["opencode", "opencode-desktop"];
 
 // src/cli/doctor/checks/system.ts
@@ -27847,9 +27878,9 @@ async function checkSystem() {
   }
   if (!pluginInfo.registered) {
     issues.push({
-      title: "oh-my-opencode is not registered",
+      title: "opencode-auto-batch is not registered",
       description: "Plugin entry is missing from OpenCode configuration.",
-      fix: "Run: bunx oh-my-opencode install",
+      fix: "Install the package and add `opencode-auto-batch` to your OpenCode plugin list.",
       severity: "error",
       affects: ["all agents"]
     });
@@ -27867,7 +27898,7 @@ async function checkSystem() {
     issues.push({
       title: "Loaded plugin is outdated",
       description: `Loaded ${systemInfo.loadedVersion}, latest ${latestVersion}.`,
-      fix: `Update: cd "${loadedInfo.cacheDir}" && bun add oh-my-opencode@${installTag}`,
+      fix: `Update the installed package in ${loadedInfo.cacheDir} to the latest opencode-auto-batch release (${installTag}).`,
       severity: "warning",
       affects: ["plugin features"]
     });
@@ -28830,6 +28861,96 @@ async function checkTools() {
     issues
   };
 }
+
+// src/cli/doctor/checks/providers.ts
+init_shared();
+function collectOverrides(config2) {
+  if (!config2)
+    return [];
+  const result = [];
+  const agents = config2.agents;
+  if (agents && typeof agents === "object") {
+    for (const [name, value] of Object.entries(agents)) {
+      const model = typeof value.model === "string" ? value.model : undefined;
+      if (model)
+        result.push({ scope: "agent", name, model });
+    }
+  }
+  const categories2 = config2.categories;
+  if (categories2 && typeof categories2 === "object") {
+    for (const [name, value] of Object.entries(categories2)) {
+      const model = typeof value.model === "string" ? value.model : undefined;
+      if (model)
+        result.push({ scope: "category", name, model });
+    }
+  }
+  return result;
+}
+function splitModelID(model) {
+  const slashIndex = model.indexOf("/");
+  if (slashIndex <= 0 || slashIndex === model.length - 1)
+    return null;
+  return {
+    provider: model.slice(0, slashIndex),
+    modelID: model.slice(slashIndex + 1)
+  };
+}
+async function checkProviders() {
+  const config2 = loadOmoConfig() ?? null;
+  const connected = readConnectedProvidersCache() ?? [];
+  const providerModels = readProviderModelsCache();
+  const overrides = collectOverrides(config2);
+  const issues = [];
+  const details = [];
+  details.push(`Connected providers: ${connected.length > 0 ? connected.join(", ") : "none cached"}`);
+  details.push(`Runtime model overrides: ${overrides.length}`);
+  if (connected.length === 0) {
+    issues.push({
+      title: "Provider cache not populated",
+      description: "No connected provider cache was found, so auth/model routing diagnostics are incomplete.",
+      fix: "Launch OpenCode once with your providers connected, then rerun doctor.",
+      severity: "warning",
+      affects: ["provider diagnostics", "model routing"]
+    });
+  }
+  for (const override of overrides) {
+    const parsed = splitModelID(override.model);
+    if (!parsed)
+      continue;
+    if (connected.length > 0 && !connected.includes(parsed.provider)) {
+      issues.push({
+        title: `${override.scope} override targets a disconnected provider`,
+        description: `${override.scope} \`${override.name}\` uses \`${override.model}\`, but provider \`${parsed.provider}\` is not present in the connected provider cache.`,
+        fix: `Connect ${parsed.provider} or change the override for ${override.scope} ${override.name}.`,
+        severity: "warning",
+        affects: ["provider auth", "agent routing"]
+      });
+      continue;
+    }
+    const advertisedModels = providerModels?.models?.[parsed.provider];
+    if (!Array.isArray(advertisedModels) || advertisedModels.length === 0) {
+      continue;
+    }
+    const normalized = transformModelForProvider(parsed.provider, parsed.modelID);
+    const availableIDs = advertisedModels.filter((entry) => typeof entry === "string");
+    if (!availableIDs.includes(normalized)) {
+      issues.push({
+        title: `${override.scope} override model not advertised by provider cache`,
+        description: `${override.scope} \`${override.name}\` uses \`${override.model}\`, but cached models for \`${parsed.provider}\` do not include \`${normalized}\`.`,
+        fix: `Refresh models or update the override for ${override.scope} ${override.name}.`,
+        severity: "warning",
+        affects: ["model resolution", "provider diagnostics"]
+      });
+    }
+  }
+  return {
+    name: CHECK_NAMES[CHECK_IDS.PROVIDERS],
+    status: issues.length > 0 ? "warn" : "pass",
+    message: issues.length > 0 ? `${issues.length} provider/auth warning(s) detected` : "Provider/auth diagnostics look healthy",
+    details,
+    issues
+  };
+}
 // src/cli/doctor/checks/index.ts
 function getAllCheckDefinitions() {
   return [
@@ -28853,6 +28974,11 @@ function getAllCheckDefinitions() {
       id: CHECK_IDS.MODELS,
       name: CHECK_NAMES[CHECK_IDS.MODELS],
       check: checkModels
+    },
+    {
+      id: CHECK_IDS.PROVIDERS,
+      name: CHECK_NAMES[CHECK_IDS.PROVIDERS],
+      check: checkProviders
     }
   ];
 }
@@ -28899,6 +29025,7 @@ function formatIssue(issue2, index) {
 }
 
 // src/cli/doctor/format-default.ts
+init_shared();
 function formatDefault(result) {
   const lines = [];
   lines.push(formatHeader());
@@ -28906,7 +29033,7 @@ function formatDefault(result) {
   if (allIssues.length === 0) {
     const opencodeVer = result.systemInfo.opencodeVersion ?? "unknown";
     const pluginVer = result.systemInfo.pluginVersion ?? "unknown";
-    lines.push(` ${import_picocolors18.default.green(SYMBOLS3.check)} ${import_picocolors18.default.green(`System OK (opencode ${opencodeVer} \xB7 oh-my-opencode ${pluginVer})`)}`);
+    lines.push(` ${import_picocolors18.default.green(SYMBOLS3.check)} ${import_picocolors18.default.green(`System OK (opencode ${opencodeVer} \xB7 ${PLUGIN_NAME} ${pluginVer})`)}`);
   } else {
     const issueCount = allIssues.filter((i2) => i2.severity === "error").length;
     const warnCount = allIssues.filter((i2) => i2.severity === "warning").length;
@@ -28954,6 +29081,7 @@ function formatStatus(result) {
 
 // src/cli/doctor/format-verbose.ts
 var import_picocolors20 = __toESM(require_picocolors(), 1);
+init_shared();
 function formatVerbose(result) {
   const lines = [];
   lines.push(formatHeader());
@@ -28961,7 +29089,7 @@ function formatVerbose(result) {
   lines.push(`${import_picocolors20.default.bold("System Information")}`);
   lines.push(`${import_picocolors20.default.dim("\u2500".repeat(40))}`);
   lines.push(`  ${formatStatusSymbol("pass")} opencode    ${systemInfo.opencodeVersion ?? "unknown"}`);
-  lines.push(`  ${formatStatusSymbol("pass")} oh-my-opencode ${systemInfo.pluginVersion ?? "unknown"}`);
+  lines.push(`  ${formatStatusSymbol("pass")} ${PLUGIN_NAME} ${systemInfo.pluginVersion ?? "unknown"}`);
   if (systemInfo.loadedVersion) {
     lines.push(`  ${formatStatusSymbol("pass")} loaded      ${systemInfo.loadedVersion}`);
   }
