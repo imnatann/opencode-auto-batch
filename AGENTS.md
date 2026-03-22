@@ -1,15 +1,15 @@
-# oh-my-opencode — O P E N C O D E Plugin
+# opencode-auto-batch — OpenCode Plugin
 
 **Generated:** 2026-03-06 | **Commit:** 7fe44024 | **Branch:** dev
 
 ## OVERVIEW
 
-OpenCode plugin (npm: `oh-my-opencode`) that extends Claude Code (OpenCode fork) with multi-agent orchestration, 48 lifecycle hooks, 26 tools, skill/command/MCP systems, and Claude Code compatibility. 1268 TypeScript files, 160k LOC.
+Standalone OpenCode plugin (npm: `opencode-auto-batch`) that adds auto-routing, parallel batch execution, visible route notifications, and multi-in-progress todo behavior on top of the existing multi-agent runtime. 1268 TypeScript files, 160k LOC.
 
 ## STRUCTURE
 
 ```
-oh-my-opencode/
+opencode-auto-batch/
 ├── src/
 │   ├── index.ts              # Plugin entry: loadConfig → createManagers → createTools → createHooks → createPluginInterface
 │   ├── plugin-config.ts      # JSONC multi-level config: user → project → defaults (Zod v4)

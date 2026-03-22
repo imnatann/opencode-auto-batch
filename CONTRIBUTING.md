@@ -1,6 +1,6 @@
-# Contributing to Oh My OpenCode
+# Contributing to OpenCode Auto Batch
 
-First off, thanks for taking the time to contribute! This document provides guidelines and instructions for contributing to oh-my-opencode.
+First off, thanks for taking the time to contribute! This document provides guidelines and instructions for contributing to `opencode-auto-batch`.
 
 ## Table of Contents
 
@@ -63,8 +63,8 @@ If English isn't your first language, don't worry! We value your contributions r
 
 ```bash
 # Clone the repository
-git clone https://github.com/code-yeongyu/oh-my-openagent.git
-cd oh-my-openagent
+git clone https://github.com/imnatann/opencode-auto-batch.git
+cd opencode-auto-batch
 
 # Install dependencies (bun only - never use npm/yarn)
 bun install

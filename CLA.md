@@ -1,6 +1,6 @@
 # Contributor License Agreement
 
-Thank you for your interest in contributing to oh-my-opencode ("Project"), owned by YeonGyu Kim ("Owner").
+Thank you for your interest in contributing to opencode-auto-batch ("Project"), owned by the repository maintainers ("Owner").
 
 By signing this Contributor License Agreement ("Agreement"), you agree to the following terms:
 

@@ -1,58 +1,51 @@
 # Standalone Installation
 
-`opencode-auto-batch` is a standalone OpenCode plugin package.
+`opencode-auto-batch` installs as its own OpenCode plugin entry.
 
-It installs as its own plugin entry and adds:
+No wrapper repo.
 
-- `auto` routing with visible agent notifications
-- `Kerjain Semua` batch execution with aggressive safe parallelism
-- multiple simultaneous `in_progress` todos in the UI when tasks are truly running together
+No local overlay hack.
 
-This repo includes bundled `dist/` output, so users do not need Bun just to install from Git.
+Clone it, install it into OpenCode's local dependency space, copy the example configs, restart OpenCode.
 
-## Recommended Repo Name
+This repo commits bundled `dist/`, so Git installs work even if the user does not have Bun.
 
-- `opencode-auto-batch`
-
-## Local Install From Git Repo
-
-1. Clone the repository:
+## Quick Install
 
 ```bash
 git clone https://github.com/imnatann/opencode-auto-batch.git "$HOME/opencode-auto-batch"
-```
-
-2. Install the plugin into OpenCode's local dependency directory:
-
-```bash
 npm install --prefix "$HOME/.config/opencode" "$HOME/opencode-auto-batch"
-```
-
-3. Copy the example configs:
-
-```bash
 cp "$HOME/opencode-auto-batch/docs/examples/opencode.json" "$HOME/.config/opencode/opencode.json"
-cp "$HOME/opencode-auto-batch/docs/examples/oh-my-opencode.json" "$HOME/.config/opencode/oh-my-opencode.json"
+cp "$HOME/opencode-auto-batch/docs/examples/runtime-config.json" "$HOME/.config/opencode/oh-my-opencode.json"
 ```
 
-4. Restart `opencode`.
+Then restart `opencode`.
 
-## Update After Pulling Changes
+## What The Install Does
+
+- installs `opencode-auto-batch` into `~/.config/opencode/node_modules`
+- makes `opencode-auto-batch` the plugin entry in `~/.config/opencode/opencode.json`
+- sets `auto` as the default front-door agent
+- installs the runtime config that powers route notifications, multi-batch execution, and high-concurrency background workers
+
+## Update Flow
 
 ```bash
 git -C "$HOME/opencode-auto-batch" pull --rebase
 npm install --prefix "$HOME/.config/opencode" "$HOME/opencode-auto-batch"
 ```
 
-## Optional Publish Workflow
+Restart `opencode` after updating.
 
-If you publish this package to npm later, users can install it with:
+## Optional npm Install Later
+
+If this package is published to npm, the install becomes:
 
 ```bash
 npm install --prefix "$HOME/.config/opencode" opencode-auto-batch
 ```
 
-and keep this in `~/.config/opencode/opencode.json`:
+and `~/.config/opencode/opencode.json` keeps:
 
 ```json
 {
@@ -60,6 +53,14 @@ and keep this in `~/.config/opencode/opencode.json`:
 }
 ```
 
-## Current Compatibility Note
+## Compatibility Note
 
-The plugin package is standalone, but it currently reuses the `~/.config/opencode/oh-my-opencode.json` compatibility config file for runtime settings.
+The package identity is standalone.
+
+The runtime config still lives at:
+
+```text
+~/.config/opencode/oh-my-opencode.json
+```
+
+That path remains for runtime compatibility only.
