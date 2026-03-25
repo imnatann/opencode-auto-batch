@@ -20,6 +20,25 @@ brew install opencode
 
 This repo is currently pinned to OpenCode package compatibility `1.2.27` so the plugin can be reinstalled cleanly on other machines.
 
+## Provider Manager Compatibility
+
+If you want the built-in OpenCode `Provider Manager` with:
+
+- `ChatGPT round robin`
+- multiple ChatGPT/OpenAI accounts
+- quota / weekly remaining indicators
+- cooldown / rate-limited account state
+- `add account`, `disable`, and `remove`
+
+that feature comes from OpenCode core in the aligned install, not from `opencode-auto-batch` itself.
+
+In practice:
+
+- install OpenCode `1.2.27`
+- install this plugin on top of it
+- the Provider Manager should come from OpenCode core
+- the plugin continues to provide routing, batching, fallback, and orchestration on top
+
 ```bash
 mkdir -p "$HOME/.config/opencode"
 git clone https://github.com/imnatann/opencode-auto-batch.git "$HOME/opencode-auto-batch"

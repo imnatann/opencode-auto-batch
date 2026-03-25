@@ -184,6 +184,14 @@ brew install opencode
 
 This repo is currently aligned to the OpenCode build installed on this machine: `1.2.27`.
 
+### Provider Manager / Multi-Account Note
+
+The visible `Provider Manager` UI with `ChatGPT round robin`, multiple ChatGPT accounts, quota bars, cooldown state, and `add account` lives in OpenCode core.
+
+So if you install OpenCode `1.2.27`, that multi-account manager comes from OpenCode itself, not from this plugin.
+
+`opencode-auto-batch` can work alongside it, but does not own the account manager UI or the OpenAI account round-robin transport.
+
 From GitHub:
 
 ```bash
