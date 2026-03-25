@@ -1,4 +1,5 @@
 import type { OhMyOpenCodeConfig, HookName } from "../../config"
+import type { SkillMcpManager } from "../../features/skill-mcp-manager"
 import type { ModelCacheState } from "../../plugin-state"
 import type { PluginContext } from "../types"
 
@@ -25,6 +26,7 @@ import {
   createQuestionLabelTruncatorHook,
   createPreemptiveCompactionHook,
   createRuntimeFallbackHook,
+  createWorkspaceMemoryAutomationHook,
 } from "../../hooks"
 import { createAnthropicEffortHook } from "../../hooks/anthropic-effort"
 import {
@@ -60,16 +62,18 @@ export type SessionHooks = {
   taskResumeInfo: ReturnType<typeof createTaskResumeInfoHook> | null
   anthropicEffort: ReturnType<typeof createAnthropicEffortHook> | null
   runtimeFallback: ReturnType<typeof createRuntimeFallbackHook> | null
+  workspaceMemoryAutomation: ReturnType<typeof createWorkspaceMemoryAutomationHook> | null
 }
 
 export function createSessionHooks(args: {
   ctx: PluginContext
   pluginConfig: OhMyOpenCodeConfig
   modelCacheState: ModelCacheState
+  skillMcpManager: SkillMcpManager
   isHookEnabled: (hookName: HookName) => boolean
   safeHookEnabled: boolean
 }): SessionHooks {
-  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled } = args
+  const { ctx, pluginConfig, modelCacheState, skillMcpManager, isHookEnabled, safeHookEnabled } = args
   const safeHook = <T>(hookName: HookName, factory: () => T): T | null =>
     safeCreateHook(hookName, factory, { enabled: safeHookEnabled })
 
@@ -261,6 +265,10 @@ export function createSessionHooks(args: {
           pluginConfig,
         }))
     : null
+
+  const workspaceMemoryAutomation = isHookEnabled("workspace-memory-automation")
+    ? safeHook("workspace-memory-automation", () => createWorkspaceMemoryAutomationHook(ctx, skillMcpManager))
+    : null
   return {
     contextWindowMonitor,
     preemptiveCompaction,
@@ -285,5 +293,6 @@ export function createSessionHooks(args: {
     taskResumeInfo,
     anthropicEffort,
     runtimeFallback,
+    workspaceMemoryAutomation,
   }
 }

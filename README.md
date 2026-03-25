@@ -176,9 +176,18 @@ That is the intended shape:
 
 ## Install
 
+Prerequisite: install OpenCode first.
+
+```bash
+brew install opencode
+```
+
+This repo is currently aligned to the OpenCode build installed on this machine: `1.2.27`.
+
 From GitHub:
 
 ```bash
+mkdir -p "$HOME/.config/opencode"
 git clone https://github.com/imnatann/opencode-auto-batch.git "$HOME/opencode-auto-batch"
 npm install --prefix "$HOME/.config/opencode" "$HOME/opencode-auto-batch"
 cp "$HOME/opencode-auto-batch/docs/examples/opencode.json" "$HOME/.config/opencode/opencode.json"
@@ -186,6 +195,14 @@ cp "$HOME/opencode-auto-batch/docs/examples/runtime-config.json" "$HOME/.config/
 ```
 
 Then restart `opencode`.
+
+To update later:
+
+```bash
+brew upgrade opencode
+git -C "$HOME/opencode-auto-batch" pull --rebase
+npm install --prefix "$HOME/.config/opencode" "$HOME/opencode-auto-batch"
+```
 
 Full install guide: `docs/guide/standalone-installation.md`
 
@@ -214,7 +231,7 @@ ultrawork audit this repo, fix the highest-risk issue, run the relevant verifica
 - `docs/guide/standalone-installation.md` - install and update flow
 - `docs/guide/agents-and-routing.md` - front-door agents and route behavior
 - `docs/guide/multi-batch.md` - execution waves, ownership, and todo visibility
-- `docs/guide/subagent-panel.md` - plugin-side subagent panel and native-sidebar boundary
+- `docs/guide/subagent-panel.md` - plugin-side subagent panel, focused-task actions, and native-sidebar boundary
 - `docs/guide/publishing.md` - npm publish and release flow
 - `docs/examples/opencode.json` - OpenCode config with `auto` as default
 - `docs/examples/runtime-config.json` - runtime config copied to `~/.config/opencode/oh-my-opencode.json`

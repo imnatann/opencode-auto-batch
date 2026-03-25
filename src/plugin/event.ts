@@ -215,6 +215,7 @@ export function createEventHandler(args: {
     await Promise.resolve(hooks.writeExistingFileGuard?.event?.(input));
     await Promise.resolve(hooks.atlasHook?.handler?.(input));
     await Promise.resolve(hooks.autoSlashCommand?.event?.(input));
+    await Promise.resolve(hooks.workspaceMemoryAutomation?.event?.(input));
   };
 
   const recentSyntheticIdles = new Map<string, number>();

@@ -1,0 +1,1 @@
+export { createWorkspaceMemoryAutomationHook } from "./hook"

@@ -2,6 +2,7 @@ import type { AvailableSkill } from "./agents/dynamic-agent-prompt-builder";
 import type { HookName, OhMyOpenCodeConfig } from "./config";
 import type { LoadedSkill } from "./features/opencode-skill-loader/types";
 import type { BackgroundManager } from "./features/background-agent";
+import type { SkillMcpManager } from "./features/skill-mcp-manager";
 import type { PluginContext } from "./plugin/types";
 import type { ModelCacheState } from "./plugin-state";
 export type CreatedHooks = ReturnType<typeof createHooks>;
@@ -19,6 +20,7 @@ export declare function createHooks(args: {
     pluginConfig: OhMyOpenCodeConfig;
     modelCacheState: ModelCacheState;
     backgroundManager: BackgroundManager;
+    skillMcpManager: SkillMcpManager;
     isHookEnabled: (hookName: HookName) => boolean;
     safeHookEnabled: boolean;
     mergedSkills: LoadedSkill[];
@@ -73,5 +75,6 @@ export declare function createHooks(args: {
     taskResumeInfo: ReturnType<typeof import("./hooks").createTaskResumeInfoHook> | null;
     anthropicEffort: ReturnType<typeof import("./hooks/anthropic-effort").createAnthropicEffortHook> | null;
     runtimeFallback: ReturnType<typeof import("./hooks").createRuntimeFallbackHook> | null;
+    workspaceMemoryAutomation: ReturnType<typeof import("./hooks").createWorkspaceMemoryAutomationHook> | null;
 };
 export {};

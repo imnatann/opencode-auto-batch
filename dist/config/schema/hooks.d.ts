@@ -48,5 +48,6 @@ export declare const HookNameSchema: z.ZodEnum<{
     "hashline-read-enhancer": "hashline-read-enhancer";
     "read-image-resizer": "read-image-resizer";
     "todo-description-override": "todo-description-override";
+    "workspace-memory-automation": "workspace-memory-automation";
 }>;
 export type HookName = z.infer<typeof HookNameSchema>;

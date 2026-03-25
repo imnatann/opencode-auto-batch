@@ -24590,7 +24590,8 @@ var HookNameSchema = exports_external.enum([
   "anthropic-effort",
   "hashline-read-enhancer",
   "read-image-resizer",
-  "todo-description-override"
+  "todo-description-override",
+  "workspace-memory-automation"
 ]);
 // src/config/schema/notification.ts
 var NotificationConfigSchema = exports_external.object({

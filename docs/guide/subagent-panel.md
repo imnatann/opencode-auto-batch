@@ -19,7 +19,13 @@ What it shows:
 Important boundary:
 
 - this is the plugin-side data/view layer
-- a persistent right sidebar inside OpenCode still requires an OpenCode core UI patch
+- a persistent right sidebar inside OpenCode still requires an OpenCode core UI patch if your OpenCode build does not already include it
+
+If you are running a newer OpenCode core with the session sidebar patch, this plugin-side panel now lines up more closely with that flow:
+
+- focused subagent details
+- continue / retry / cancel guidance
+- active todo preview for the focused subagent
 
 ## Example
 
@@ -40,6 +46,6 @@ The tool returns a sidebar-style snapshot like:
 
 ## Why this exists
 
-This is meant to provide the data and formatting layer that a future native sidebar can reuse.
+This is meant to provide the data and formatting layer that a native sidebar can reuse.
 
 It also gives you a usable fallback when the plugin can track subagents but the OpenCode core UI does not yet expose a dedicated right-side panel.

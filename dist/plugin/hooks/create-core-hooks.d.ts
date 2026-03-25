@@ -1,10 +1,12 @@
 import type { HookName, OhMyOpenCodeConfig } from "../../config";
+import type { SkillMcpManager } from "../../features/skill-mcp-manager";
 import type { PluginContext } from "../types";
 import type { ModelCacheState } from "../../plugin-state";
 export declare function createCoreHooks(args: {
     ctx: PluginContext;
     pluginConfig: OhMyOpenCodeConfig;
     modelCacheState: ModelCacheState;
+    skillMcpManager: SkillMcpManager;
     isHookEnabled: (hookName: HookName) => boolean;
     safeHookEnabled: boolean;
 }): {
@@ -47,4 +49,5 @@ export declare function createCoreHooks(args: {
     taskResumeInfo: ReturnType<typeof import("../../hooks").createTaskResumeInfoHook> | null;
     anthropicEffort: ReturnType<typeof import("../../hooks/anthropic-effort").createAnthropicEffortHook> | null;
     runtimeFallback: ReturnType<typeof import("../../hooks").createRuntimeFallbackHook> | null;
+    workspaceMemoryAutomation: ReturnType<typeof import("../../hooks").createWorkspaceMemoryAutomationHook> | null;
 };

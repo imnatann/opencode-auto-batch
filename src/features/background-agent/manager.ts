@@ -955,21 +955,24 @@ export class BackgroundManager {
     })
   }
 
-  private async checkSessionTodos(sessionID: string): Promise<boolean> {
+  async getSessionTodos(sessionID: string): Promise<Todo[]> {
     try {
       const response = await this.client.session.todo({
         path: { id: sessionID },
       })
-      const todos = normalizeSDKResponse(response, [] as Todo[], { preferResponseOnMissingData: true })
-      if (!todos || todos.length === 0) return false
-
-      const incomplete = todos.filter(
-        (t) => t.status !== "completed" && t.status !== "cancelled"
-      )
-      return incomplete.length > 0
+      return normalizeSDKResponse(response, [] as Todo[], { preferResponseOnMissingData: true }) ?? []
     } catch {
-      return false
+      return []
     }
+  }
+
+  private async checkSessionTodos(sessionID: string): Promise<boolean> {
+    const todos = await this.getSessionTodos(sessionID)
+    if (todos.length === 0) return false
+    const incomplete = todos.filter(
+      (t) => t.status !== "completed" && t.status !== "cancelled"
+    )
+    return incomplete.length > 0
   }
 
   handleEvent(event: Event): void {

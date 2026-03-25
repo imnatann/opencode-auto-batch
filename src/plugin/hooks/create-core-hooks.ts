@@ -1,4 +1,5 @@
 import type { HookName, OhMyOpenCodeConfig } from "../../config"
+import type { SkillMcpManager } from "../../features/skill-mcp-manager"
 import type { PluginContext } from "../types"
 import type { ModelCacheState } from "../../plugin-state"
 
@@ -10,15 +11,17 @@ export function createCoreHooks(args: {
   ctx: PluginContext
   pluginConfig: OhMyOpenCodeConfig
   modelCacheState: ModelCacheState
+  skillMcpManager: SkillMcpManager
   isHookEnabled: (hookName: HookName) => boolean
   safeHookEnabled: boolean
 }) {
-  const { ctx, pluginConfig, modelCacheState, isHookEnabled, safeHookEnabled } = args
+  const { ctx, pluginConfig, modelCacheState, skillMcpManager, isHookEnabled, safeHookEnabled } = args
 
   const session = createSessionHooks({
     ctx,
     pluginConfig,
     modelCacheState,
+    skillMcpManager,
     isHookEnabled,
     safeHookEnabled,
   })

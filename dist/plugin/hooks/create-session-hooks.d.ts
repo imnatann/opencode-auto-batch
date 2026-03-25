@@ -1,7 +1,8 @@
 import type { OhMyOpenCodeConfig, HookName } from "../../config";
+import type { SkillMcpManager } from "../../features/skill-mcp-manager";
 import type { ModelCacheState } from "../../plugin-state";
 import type { PluginContext } from "../types";
-import { createContextWindowMonitorHook, createSessionRecoveryHook, createSessionNotification, createThinkModeHook, createModelFallbackHook, createAnthropicContextWindowLimitRecoveryHook, createAutoUpdateCheckerHook, createAgentUsageReminderHook, createNonInteractiveEnvHook, createInteractiveBashSessionHook, createRalphLoopHook, createEditErrorRecoveryHook, createDelegateTaskRetryHook, createTaskResumeInfoHook, createStartWorkHook, createPrometheusMdOnlyHook, createSisyphusJuniorNotepadHook, createNoSisyphusGptHook, createNoHephaestusNonGptHook, createQuestionLabelTruncatorHook, createPreemptiveCompactionHook, createRuntimeFallbackHook } from "../../hooks";
+import { createContextWindowMonitorHook, createSessionRecoveryHook, createSessionNotification, createThinkModeHook, createModelFallbackHook, createAnthropicContextWindowLimitRecoveryHook, createAutoUpdateCheckerHook, createAgentUsageReminderHook, createNonInteractiveEnvHook, createInteractiveBashSessionHook, createRalphLoopHook, createEditErrorRecoveryHook, createDelegateTaskRetryHook, createTaskResumeInfoHook, createStartWorkHook, createPrometheusMdOnlyHook, createSisyphusJuniorNotepadHook, createNoSisyphusGptHook, createNoHephaestusNonGptHook, createQuestionLabelTruncatorHook, createPreemptiveCompactionHook, createRuntimeFallbackHook, createWorkspaceMemoryAutomationHook } from "../../hooks";
 import { createAnthropicEffortHook } from "../../hooks/anthropic-effort";
 export type SessionHooks = {
     contextWindowMonitor: ReturnType<typeof createContextWindowMonitorHook> | null;
@@ -27,11 +28,13 @@ export type SessionHooks = {
     taskResumeInfo: ReturnType<typeof createTaskResumeInfoHook> | null;
     anthropicEffort: ReturnType<typeof createAnthropicEffortHook> | null;
     runtimeFallback: ReturnType<typeof createRuntimeFallbackHook> | null;
+    workspaceMemoryAutomation: ReturnType<typeof createWorkspaceMemoryAutomationHook> | null;
 };
 export declare function createSessionHooks(args: {
     ctx: PluginContext;
     pluginConfig: OhMyOpenCodeConfig;
     modelCacheState: ModelCacheState;
+    skillMcpManager: SkillMcpManager;
     isHookEnabled: (hookName: HookName) => boolean;
     safeHookEnabled: boolean;
 }): SessionHooks;

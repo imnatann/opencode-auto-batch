@@ -5,6 +5,13 @@ import type { TaskHistoryEntry } from "../../features/background-agent/task-hist
 import { formatDuration } from "../background-task/time-format"
 import type { SubagentPanelArgs } from "./types"
 
+type TodoItem = {
+  id: string
+  content: string
+  status: string
+  priority: string
+}
+
 type ToolContextWithSession = {
   sessionID: string
   metadata?: (input: { title?: string; metadata?: Record<string, unknown> }) => void
@@ -63,6 +70,32 @@ function formatHistoryLine(entry: TaskHistoryEntry): string {
   ].join("\n")
 }
 
+function pickFocus(tasks: BackgroundTask[]): BackgroundTask | null {
+  return tasks.find((task) => task.status === "running")
+    ?? tasks.find((task) => task.status === "pending")
+    ?? tasks[0]
+    ?? null
+}
+
+function formatTodoLine(item: TodoItem): string {
+  return `- [${item.status}] ${item.content}`
+}
+
+function formatActions(task: BackgroundTask): string[] {
+  const out = [
+    `- Inspect: \`background_output(task_id=\"${task.id}\", full_session=true)\``,
+  ]
+  if (task.sessionID) {
+    out.push(`- Open session: \`session_read(session_id=\"${task.sessionID}\", include_todos=true)\``)
+    out.push(`- Continue: \`background_recover(taskId=\"${task.id}\", mode=\"continue\")\``)
+  }
+  out.push(`- Retry cleanly: \`background_recover(taskId=\"${task.id}\", mode=\"cancel_and_relaunch\")\``)
+  if (task.status === "running" || task.status === "pending") {
+    out.push(`- Cancel: \`background_cancel(taskId=\"${task.id}\")\``)
+  }
+  return out
+}
+
 export function createSubagentPanelTool(manager: BackgroundManager): ToolDefinition {
   return tool({
     description: "Shows a sidebar-style snapshot of subagents, statuses, and previews for the current or specified session tree.",
@@ -93,6 +126,7 @@ export function createSubagentPanelTool(manager: BackgroundManager): ToolDefinit
       const queued = descendantTasks.filter((task) => task.status === "pending").slice(0, limit)
       const terminal = descendantTasks.filter((task) => ["completed", "error", "cancelled", "interrupt"].includes(task.status)).slice(0, limit)
       const completedHistory = history.filter((entry) => ["completed", "error", "cancelled", "interrupt"].includes(entry.status)).slice(0, limit)
+      const focused = pickFocus(descendantTasks)
       const stalled = descendantTasks.filter((task) => {
         if (task.status !== "running") return false
         const last = task.progress?.lastUpdate?.getTime()
@@ -136,12 +170,35 @@ export function createSubagentPanelTool(manager: BackgroundManager): ToolDefinit
       sections.push(`\n## Terminal (still in memory)`)
       sections.push(terminal.length > 0 ? terminal.map(formatTaskLine).join("\n") : `- None`)
 
+      if (focused) {
+        const todos = focused.sessionID ? await manager.getSessionTodos(focused.sessionID) : []
+        const active = todos.filter((item) => item.status !== "completed" && item.status !== "cancelled")
+        sections.push(`\n## Focused Task`)
+        sections.push(`- Task ID: \`${focused.id}\``)
+        sections.push(`- Description: ${focused.description}`)
+        sections.push(`- Status: \`${focused.status}\` | Agent: \`${focused.agent}\`${focused.category ? ` [${focused.category}]` : ""}`)
+        if (focused.sessionID) {
+          sections.push(`- Session: \`${focused.sessionID}\``)
+        }
+        if (focused.progress?.lastTool) {
+          sections.push(`- Last tool: \`${focused.progress.lastTool}\``)
+        }
+        const preview = taskPreview(focused)
+        if (preview) {
+          sections.push(`- Preview: ${preview}`)
+        }
+        sections.push(`\n### Suggested Actions`)
+        sections.push(formatActions(focused).join("\n"))
+        sections.push(`\n### Active Todos`)
+        sections.push(active.length > 0 ? active.slice(0, 4).map(formatTodoLine).join("\n") : `- None`)
+      }
+
       if (includeCompleted) {
         sections.push(`\n## Recent Completed History`)
         sections.push(completedHistory.length > 0 ? completedHistory.map(formatHistoryLine).join("\n") : `- None`)
       }
 
-      sections.push(`\n> This is the plugin-side sidebar snapshot. A persistent right sidebar still requires an OpenCode core UI patch.`)
+      sections.push(`\n> This is the plugin-side sidebar snapshot. If your OpenCode core includes the newer session sidebar patch, this output now mirrors the same open, continue, retry, and cancel workflow more closely.`)
 
       return sections.join("\n")
     },
